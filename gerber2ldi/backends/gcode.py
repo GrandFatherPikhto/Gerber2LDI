@@ -24,6 +24,14 @@ each S change.
 `F` is millimetres per MINUTE in GRBL; the conversion from mm/s lives in
 ``Job.feed_mm_per_min`` and nowhere else.
 
+`S` is written PER ROW from ``Job.row_s_values``: a dose strip exposes each band of
+rows with its own power, so one number for the whole program would under- or
+over-expose every band but one.
+
+Header notes come from ``Job.notes`` and are ASCII English on purpose (the file is
+written with ``encoding="ascii"``); :func:`_comment` refuses anything else instead of
+letting a translation reach the machine as question marks.
+
 `read_segments()` parses the subset we write, for `preview <nc>`. It tracks the
 laser state (`M4`/`M5`), because a parser that ignores it would see copper where
 the machine sees nothing.
@@ -32,6 +40,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ..errors import JobError
+from ..i18n import _
 from ..scan import ScanRow
 
 NUMBER_DECIMALS = 3
@@ -41,6 +51,14 @@ WORK_ZERO_COMMENT = ("; work coordinates G54: the operator sets the work zero at
 """Coordinates here are WORK coordinates. Without the operator setting G54 to the
 same corner the "inside the table" check means nothing — it compares numbers to a
 frame nobody established."""
+
+
+def _comment(text: str) -> str:
+    """A header note as a G-code comment; refuses non-ASCII (see the docstring)."""
+    if not text.isascii():
+        raise JobError(_("A note for the G-code header is not ASCII: {text}")
+                       .format(text=text))
+    return f"; {text}"
 
 
 def gc_number(value: float) -> str:
@@ -53,9 +71,10 @@ def gc_number(value: float) -> str:
 
 def render_gcode(job) -> list[str]:
     """The whole program as lines — separated from writing so tests can diff it."""
-    lines = [LASER_MODE_COMMENT, WORK_ZERO_COMMENT, "G21", "G90",
-             f"F{gc_number(job.feed_mm_per_min)}"]
-    for row in job.rows:
+    lines = [LASER_MODE_COMMENT, WORK_ZERO_COMMENT]
+    lines.extend(_comment(note) for note in job.notes)
+    lines.extend(["G21", "G90", f"F{gc_number(job.feed_mm_per_min)}"])
+    for row, s_value in zip(job.rows, job.row_s_values):
         lines.append("M5")
         lines.append(f"G0 X{gc_number(job.pass_start_x)} Y{gc_number(row.y_mm)}")
         lines.append("M4 S0")
@@ -63,7 +82,7 @@ def render_gcode(job) -> list[str]:
         for start, end in row.segments:
             if start > position:
                 lines.append(f"G1 X{gc_number(start)} S0")
-            lines.append(f"G1 X{gc_number(end)} S{job.s_value}")
+            lines.append(f"G1 X{gc_number(end)} S{s_value}")
             position = end
         if job.pass_end_x > position:
             lines.append(f"G1 X{gc_number(job.pass_end_x)} S0")

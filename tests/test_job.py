@@ -227,7 +227,11 @@ def test_missing_spot_refuses_unless_switched_off(tmp_path, make_machine):
         build_job(layer, machine, power=0.5)
 
     uncalibrated = build_job(layer, machine, power=0.5, spot_compensation=False)
-    assert any("disabled explicitly" in warning for warning in uncalibrated.warnings)
+    # The warning no longer names the flag: a calibration pattern switches
+    # compensation off without any flag, and the message must not blame the operator
+    # for an option they never typed.
+    assert any("Spot compensation is off" in warning
+               for warning in uncalibrated.warnings)
     assert _middle(uncalibrated).segments == ((5.0, 15.0),)
 
 

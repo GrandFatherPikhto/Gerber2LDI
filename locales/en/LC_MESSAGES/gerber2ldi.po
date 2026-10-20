@@ -107,6 +107,9 @@ msgstr ""
 msgid "Spot radius not measured in {path}; compensation needs a measurement (use --no-spot-compensation to work without it)"
 msgstr ""
 
+msgid "Spot radius not measured in {path}: compensation stays unavailable until it is measured"
+msgstr ""
+
 msgid "Unknown {field} {value} (one of {allowed})"
 msgstr ""
 
@@ -125,7 +128,7 @@ msgstr ""
 msgid "The job is empty: nothing to expose after the transforms"
 msgstr ""
 
-msgid "Spot compensation disabled explicitly (--no-spot-compensation)"
+msgid "Spot compensation is off: every line is exposed wider than drawn by the spot radius"
 msgstr ""
 
 msgid "The pass runs {start} … {end} mm across, the table spans 0 … {table} mm"
@@ -186,4 +189,166 @@ msgid "Wrote {path}"
 msgstr ""
 
 msgid "Preview without a profile: no calibration and no compensation applied"
+msgstr ""
+
+msgid "The job carries {given} row powers for {rows} rows"
+msgstr ""
+
+msgid "Power band {y0} … {y1} mm has a non-finite {field}"
+msgstr ""
+
+msgid "Power band {y0} … {y1} mm is empty: the upper edge must be above the lower one"
+msgstr ""
+
+msgid "Power band {y0} … {y1} mm asks for {power}: the fraction must be above zero"
+msgstr ""
+
+msgid "Power bands {a0} … {a1} and {b0} … {b1} mm overlap"
+msgstr ""
+
+msgid "Power is required: one value, or bands for a dose strip"
+msgstr ""
+
+msgid "Either one power or power bands, not both"
+msgstr ""
+
+msgid "Power bands cannot be combined with spot compensation: it adds and removes rows, so a band would no longer own its rows (a dose strip runs with --no-spot-compensation)"
+msgstr ""
+
+msgid "Row at {y} mm exposes copper outside every power band: the pattern and its bands disagree"
+msgstr ""
+
+msgid "Power band {y0} … {y1} mm covers no machine row at a {step} mm row step"
+msgstr ""
+
+msgid "A note for the G-code header is not ASCII: {text}"
+msgstr ""
+
+msgid "bar widths: {error}"
+msgstr ""
+
+msgid "at least one bar width is required"
+msgstr ""
+
+msgid "power levels: {error}"
+msgstr ""
+
+msgid "at least one power level is required"
+msgstr ""
+
+msgid "expected a whole number, got {value}"
+msgstr ""
+
+msgid "a dose series needs at least two levels, got {value}"
+msgstr ""
+
+msgid "Use either --powers or --from/--to/--count, not both"
+msgstr ""
+
+msgid "A dose strip needs its levels: --powers 0.02,0.03,... or --from, --to and --count"
+msgstr ""
+
+msgid "--from, --to and --count go together: one of them is missing"
+msgstr ""
+
+msgid "Bars: widths in fixed order {widths} mm, gap = width, five lines per group"
+msgstr ""
+
+msgid "Groups bottom to top: horizontal along X (Y resolution), then vertical across (X resolution)"
+msgstr ""
+
+msgid "Dose strip: {count} tiles bottom to top, each with its own power"
+msgstr ""
+
+msgid "  {index}: y {y0} … {y1} mm, power {power}, S {s}"
+msgstr ""
+
+msgid "Square {side} mm, line {width} mm, calibration {state}"
+msgstr ""
+
+msgid "applied"
+msgstr ""
+
+msgid "not applied"
+msgstr ""
+
+msgid "Diagonals: d1 front-left to back-right, d2 front-right to back-left; theta = (d1 - d2) / (sqrt(2) * side)"
+msgstr ""
+
+msgid "The measurement is a RESIDUAL: add it to the current scale_x, scale_y and skew_deg, do not replace them"
+msgstr ""
+
+msgid "Choose a pattern: bars, dose or square"
+msgstr ""
+
+msgid "Cannot build the pattern: {error}"
+msgstr ""
+
+msgid "write a calibration program"
+msgstr ""
+
+msgid "write a calibration program: test bars, dose strip, skew square"
+msgstr ""
+
+msgid "test bars: lines and gaps of known widths"
+msgstr ""
+
+msgid "test bars: lines and gaps of known widths, horizontal then vertical"
+msgstr ""
+
+msgid "bar widths, mm, in the order to draw them"
+msgstr ""
+
+msgid "bar length, mm"
+msgstr ""
+
+msgid "apply spot compensation (off by default: the bars measure the spot)"
+msgstr ""
+
+msgid "apply spot compensation (off by default)"
+msgstr ""
+
+msgid "apply spot compensation (refused with per-row power)"
+msgstr ""
+
+msgid "dose strip: tiles stacked in Y, one power each"
+msgstr ""
+
+msgid "dose strip: tiles stacked in Y, bottom to top with rising power"
+msgstr ""
+
+msgid "power fractions, comma separated, bottom to top"
+msgstr ""
+
+msgid "lowest power fraction of a geometric series"
+msgstr ""
+
+msgid "highest power fraction of the series"
+msgstr ""
+
+msgid "how many levels the series has"
+msgstr ""
+
+msgid "tile width, mm"
+msgstr ""
+
+msgid "tile height, mm"
+msgstr ""
+
+msgid "skew square: a contour L×L to measure the diagonals"
+msgstr ""
+
+msgid "square side, mm"
+msgstr ""
+
+msgid "contour line width, mm"
+msgstr ""
+
+msgid "draw it through the profile's calibration: the result is a residual"
+msgstr ""
+
+msgid "Wrote {path}: {rows} rows, {segments} segments"
+msgstr ""
+
+msgid "Bar width {width} mm is below the row step {step} mm: it may print as one row or vanish"
 msgstr ""

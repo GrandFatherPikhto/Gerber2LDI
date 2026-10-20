@@ -309,8 +309,12 @@ def load_profile(path: str | Path) -> Machine:
             _("Machine is not calibrated: {path} not found; assuming scale 1 and skew 0")
             .format(path=calibration_file))
     if calibration.spot_radius_mm is None:
+        # Command-neutral on purpose: the refusal in `require_spot_radius` carries the
+        # remedy (its flag), while this line only states a fact about the profile —
+        # a calibration PATTERN runs without compensation by design and must not be
+        # told to pass a flag it does not have.
         warnings.append(
-            _("Spot radius not measured in {path}; compensation needs a measurement (use --no-spot-compensation to work without it)")
+            _("Spot radius not measured in {path}: compensation stays unavailable until it is measured")
             .format(path=calibration_file))
 
     return Machine(

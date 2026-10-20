@@ -107,6 +107,9 @@ msgstr "Станок не откалиброван: {path} не найден; п
 msgid "Spot radius not measured in {path}; compensation needs a measurement (use --no-spot-compensation to work without it)"
 msgstr "Радиус пятна не измерен в {path}; компенсация требует замера (работать без неё — --no-spot-compensation)"
 
+msgid "Spot radius not measured in {path}: compensation stays unavailable until it is measured"
+msgstr "Радиус пятна не измерен в {path}: компенсация недоступна, пока нет замера"
+
 msgid "Unknown {field} {value} (one of {allowed})"
 msgstr "Неизвестное {field}: {value} (одно из {allowed})"
 
@@ -125,8 +128,8 @@ msgstr "Запрошенная мощность {requested} выше потол�
 msgid "The job is empty: nothing to expose after the transforms"
 msgstr "Задание пустое: после преобразований засвечивать нечего"
 
-msgid "Spot compensation disabled explicitly (--no-spot-compensation)"
-msgstr "Компенсация пятна отключена явно (--no-spot-compensation)"
+msgid "Spot compensation is off: every line is exposed wider than drawn by the spot radius"
+msgstr "Компенсация пятна выключена: каждая линия светится шире нарисованной на радиус пятна"
 
 msgid "The pass runs {start} … {end} mm across, the table spans 0 … {table} mm"
 msgstr "Проход идёт {start} … {end} мм по X, стол занимает 0 … {table} мм"
@@ -187,3 +190,165 @@ msgstr "Записано {path}"
 
 msgid "Preview without a profile: no calibration and no compensation applied"
 msgstr "Превью без профиля: калибровка и компенсация не применены"
+
+msgid "The job carries {given} row powers for {rows} rows"
+msgstr "В задании {given} мощностей строк на {rows} строк"
+
+msgid "Power band {y0} … {y1} mm has a non-finite {field}"
+msgstr "Полоса мощности {y0} … {y1} мм: поле {field} не конечное число"
+
+msgid "Power band {y0} … {y1} mm is empty: the upper edge must be above the lower one"
+msgstr "Полоса мощности {y0} … {y1} мм пуста: верхняя граница должна быть выше нижней"
+
+msgid "Power band {y0} … {y1} mm asks for {power}: the fraction must be above zero"
+msgstr "Полоса мощности {y0} … {y1} мм просит {power}: доля должна быть больше нуля"
+
+msgid "Power bands {a0} … {a1} and {b0} … {b1} mm overlap"
+msgstr "Полосы мощности {a0} … {a1} и {b0} … {b1} мм пересекаются"
+
+msgid "Power is required: one value, or bands for a dose strip"
+msgstr "Нужна мощность: одно значение или полосы для полоски дозы"
+
+msgid "Either one power or power bands, not both"
+msgstr "Либо одна мощность, либо полосы мощности — не вместе"
+
+msgid "Power bands cannot be combined with spot compensation: it adds and removes rows, so a band would no longer own its rows (a dose strip runs with --no-spot-compensation)"
+msgstr "Полосы мощности нельзя совмещать с компенсацией пятна: она добавляет и убирает строки, и полоса перестанет владеть своими строками (полоска дозы идёт с --no-spot-compensation)"
+
+msgid "Row at {y} mm exposes copper outside every power band: the pattern and its bands disagree"
+msgstr "Строка на {y} мм светит медь вне всех полос мощности: шаблон и его полосы расходятся"
+
+msgid "Power band {y0} … {y1} mm covers no machine row at a {step} mm row step"
+msgstr "Полоса мощности {y0} … {y1} мм не накрывает ни одной строки станка при шаге строк {step} мм"
+
+msgid "A note for the G-code header is not ASCII: {text}"
+msgstr "Заметка для шапки G-code не в ASCII: {text}"
+
+msgid "bar widths: {error}"
+msgstr "ширины штрихов: {error}"
+
+msgid "at least one bar width is required"
+msgstr "нужна хотя бы одна ширина штриха"
+
+msgid "power levels: {error}"
+msgstr "уровни мощности: {error}"
+
+msgid "at least one power level is required"
+msgstr "нужен хотя бы один уровень мощности"
+
+msgid "expected a whole number, got {value}"
+msgstr "ожидалось целое число, пришло {value}"
+
+msgid "a dose series needs at least two levels, got {value}"
+msgstr "ряду дозы нужно не меньше двух уровней, пришло {value}"
+
+msgid "Use either --powers or --from/--to/--count, not both"
+msgstr "Либо --powers, либо --from/--to/--count — не вместе"
+
+msgid "A dose strip needs its levels: --powers 0.02,0.03,... or --from, --to and --count"
+msgstr "Полоске дозы нужны уровни: --powers 0.02,0.03,... или --from, --to и --count"
+
+msgid "--from, --to and --count go together: one of them is missing"
+msgstr "--from, --to и --count идут вместе: одного из них не хватает"
+
+msgid "Bars: widths in fixed order {widths} mm, gap = width, five lines per group"
+msgstr "Штрихи: ширины в фиксированном порядке {widths} мм, промежуток равен ширине, пять линий в группе"
+
+msgid "Groups bottom to top: horizontal along X (Y resolution), then vertical across (X resolution)"
+msgstr "Группы снизу вверх: горизонтальные вдоль X (разрешение по Y), затем вертикальные поперёк (разрешение по X)"
+
+msgid "Dose strip: {count} tiles bottom to top, each with its own power"
+msgstr "Полоска дозы: {count} прямоугольников снизу вверх, у каждого своя мощность"
+
+msgid "  {index}: y {y0} … {y1} mm, power {power}, S {s}"
+msgstr "  {index}: y {y0} … {y1} мм, мощность {power}, S {s}"
+
+msgid "Square {side} mm, line {width} mm, calibration {state}"
+msgstr "Квадрат {side} мм, линия {width} мм, калибровка: {state}"
+
+msgid "applied"
+msgstr "применена"
+
+msgid "not applied"
+msgstr "не применена"
+
+msgid "Diagonals: d1 front-left to back-right, d2 front-right to back-left; theta = (d1 - d2) / (sqrt(2) * side)"
+msgstr "Диагонали: d1 — от переднего левого к заднему правому, d2 — от переднего правого к заднему левому; theta = (d1 - d2) / (sqrt(2) * сторона)"
+
+msgid "The measurement is a RESIDUAL: add it to the current scale_x, scale_y and skew_deg, do not replace them"
+msgstr "Замер — это ОСТАТОК: прибавьте его к текущим scale_x, scale_y и skew_deg, а не заменяйте их"
+
+msgid "Choose a pattern: bars, dose or square"
+msgstr "Выберите шаблон: bars, dose или square"
+
+msgid "Cannot build the pattern: {error}"
+msgstr "Не удалось собрать шаблон: {error}"
+
+msgid "write a calibration program"
+msgstr "записать калибровочную программу"
+
+msgid "write a calibration program: test bars, dose strip, skew square"
+msgstr "записать калибровочную программу: тестовые штрихи, полоска дозы, квадрат для перекоса"
+
+msgid "test bars: lines and gaps of known widths"
+msgstr "тестовые штрихи: линии и промежутки известных ширин"
+
+msgid "test bars: lines and gaps of known widths, horizontal then vertical"
+msgstr "тестовые штрихи: линии и промежутки известных ширин, сначала горизонтальные, затем вертикальные"
+
+msgid "bar widths, mm, in the order to draw them"
+msgstr "ширины штрихов, мм, в порядке рисования"
+
+msgid "bar length, mm"
+msgstr "длина штриха, мм"
+
+msgid "apply spot compensation (off by default: the bars measure the spot)"
+msgstr "применить компенсацию пятна (по умолчанию выключена: штрихи и меряют пятно)"
+
+msgid "apply spot compensation (off by default)"
+msgstr "применить компенсацию пятна (по умолчанию выключена)"
+
+msgid "apply spot compensation (refused with per-row power)"
+msgstr "применить компенсацию пятна (с мощностью по строкам — отказ)"
+
+msgid "dose strip: tiles stacked in Y, one power each"
+msgstr "полоска дозы: прямоугольники друг над другом по Y, у каждого своя мощность"
+
+msgid "dose strip: tiles stacked in Y, bottom to top with rising power"
+msgstr "полоска дозы: прямоугольники друг над другом по Y, снизу вверх мощность растёт"
+
+msgid "power fractions, comma separated, bottom to top"
+msgstr "доли мощности через запятую, снизу вверх"
+
+msgid "lowest power fraction of a geometric series"
+msgstr "нижняя доля мощности геометрического ряда"
+
+msgid "highest power fraction of the series"
+msgstr "верхняя доля мощности ряда"
+
+msgid "how many levels the series has"
+msgstr "сколько уровней в ряду"
+
+msgid "tile width, mm"
+msgstr "ширина прямоугольника, мм"
+
+msgid "tile height, mm"
+msgstr "высота прямоугольника, мм"
+
+msgid "skew square: a contour L×L to measure the diagonals"
+msgstr "квадрат для перекоса: контур L×L для замера диагоналей"
+
+msgid "square side, mm"
+msgstr "сторона квадрата, мм"
+
+msgid "contour line width, mm"
+msgstr "ширина линии контура, мм"
+
+msgid "draw it through the profile's calibration: the result is a residual"
+msgstr "нарисовать через калибровку профиля: результат будет остатком"
+
+msgid "Wrote {path}: {rows} rows, {segments} segments"
+msgstr "Записано {path}: строк {rows}, отрезков {segments}"
+
+msgid "Bar width {width} mm is below the row step {step} mm: it may print as one row or vanish"
+msgstr "Ширина штриха {width} мм меньше шага строк {step} мм: он может напечататься одной строкой или пропасть"

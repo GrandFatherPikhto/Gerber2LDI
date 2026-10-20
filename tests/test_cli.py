@@ -139,3 +139,72 @@ def test_preview_draws_the_program_back(tmp_path, capsys, profile_text,
     assert main(["preview", str(program), "-o", str(picture)]) == 0
     assert picture.is_file()
     assert "Wrote" in capsys.readouterr().out
+
+
+NO_SPOT = "[calibration]\nscale_x = 1.0\nscale_y = 1.0\nskew_deg = 0.0\n"
+
+
+def test_pattern_bars_needs_no_measured_spot(tmp_path, capsys, profile_text):
+    """The bars MEASURE the spot, so the command must not demand the measurement."""
+    profile = _machine_files(tmp_path, profile_text, NO_SPOT)
+    target = tmp_path / "bars.nc"
+    assert main(["pattern", "bars", "--profile", str(profile), "--power", "0.6",
+                 "-o", str(target)]) == 0
+    out = capsys.readouterr().out
+    assert "0.200" in out and "Wrote" in out
+    assert "; spot compensation: off" in target.read_text()
+
+
+def test_pattern_dose_prints_the_bottom_to_top_mapping(tmp_path, capsys,
+                                                       profile_text):
+    profile = _machine_files(tmp_path, profile_text, NO_SPOT)
+    target = tmp_path / "dose.nc"
+    assert main(["pattern", "dose", "--profile", str(profile),
+                 "--powers", "0.02,0.05", "-o", str(target)]) == 0
+    out = capsys.readouterr().out
+    assert "bottom to top" in out
+    assert "power 0.02" in out and "S 20" in out
+    assert "power 0.05" in out and "S 50" in out
+    assert target.read_text().count("M4 S0") == target.read_text().count("M5") - 1
+
+
+def test_pattern_dose_needs_exactly_one_form_of_levels(tmp_path, capsys,
+                                                       profile_text):
+    profile = _machine_files(tmp_path, profile_text, NO_SPOT)
+    target = tmp_path / "dose.nc"
+    assert main(["pattern", "dose", "--profile", str(profile),
+                 "-o", str(target)]) == 2
+    assert "needs its levels" in capsys.readouterr().err
+    assert main(["pattern", "dose", "--profile", str(profile), "--powers", "0.02",
+                 "--from", "0.02", "--to", "0.1", "--count", "3",
+                 "-o", str(target)]) == 2
+    assert "not both" in capsys.readouterr().err
+    assert not target.exists()
+
+
+def test_pattern_square_states_whether_the_calibration_was_applied(tmp_path, capsys,
+                                                                   profile_text,
+                                                                   calibration_text):
+    profile = _machine_files(tmp_path, profile_text, calibration_text)
+    target = tmp_path / "square.nc"
+    assert main(["pattern", "square", "--profile", str(profile), "--power", "0.6",
+                 "-o", str(target)]) == 0
+    assert "not applied" in capsys.readouterr().out
+    assert main(["pattern", "square", "--profile", str(profile), "--power", "0.6",
+                 "--with-calibration", "-o", str(target)]) == 0
+    out = capsys.readouterr().out
+    assert "RESIDUAL" in out
+    assert "calibration: applied" in target.read_text()
+
+
+def test_pattern_square_too_big_for_the_table_is_one_line(tmp_path, capsys,
+                                                          profile_text,
+                                                          calibration_text):
+    profile = _machine_files(tmp_path, profile_text, calibration_text)
+    target = tmp_path / "square.nc"
+    assert main(["pattern", "square", "--profile", str(profile), "--power", "0.6",
+                 "--side-mm", "205", "-o", str(target)]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "across" in captured.err
+    assert not target.exists()

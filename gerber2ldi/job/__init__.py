@@ -1,6 +1,6 @@
 """Job: the machine profile, the calibration chain and the passes."""
 from .job import (PROCESS_ETCH, PROCESS_PLATING, PROCESSES, SIDE_BOTTOM, SIDE_TOP,
-                  SIDES, Job, build_job, ink_box)
+                  SIDES, Dose, Job, PowerBand, build_job, ink_box)
 from .profile import (Calibration, Laser, Machine, Scan, Table, calibration_path,
                       load_calibration, load_profile)
 
@@ -12,7 +12,9 @@ __all__ = [
     "SIDE_BOTTOM",
     "SIDE_TOP",
     "Calibration",
+    "Dose",
     "Job",
+    "PowerBand",
     "Laser",
     "Machine",
     "Scan",

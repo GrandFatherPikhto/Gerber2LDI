@@ -16,9 +16,12 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from .backends.gcode import read_segments, write_gcode
-from .errors import Gerber2LDIError
+from .errors import Gerber2LDIError, JobError
 from .i18n import _, setup_i18n
 from .job import PROCESSES, SIDES, SIDE_TOP, PROCESS_ETCH, build_job, ink_box, load_profile
+from .patterns import (DEFAULT_LENGTH_MM, DEFAULT_LINE_WIDTH_MM, DEFAULT_SIDE_MM,
+                       DEFAULT_TILE_HEIGHT_MM, DEFAULT_TILE_WIDTH_MM, DEFAULT_WIDTHS_MM,
+                       Pattern, bars, dose, powers_from_series, square)
 from .preview import write_preview
 from .raster import iter_rows, write_tiff
 from .source import load_layer
@@ -76,6 +79,53 @@ def _fraction(text: str) -> float:
     if not math.isfinite(value) or not 0.0 < value <= 1.0:
         raise argparse.ArgumentTypeError(
             _("expected a fraction in (0, 1], got {value}").format(value=text))
+    return value
+
+
+def _widths(text: str) -> tuple[float, ...]:
+    """argparse type: comma-separated positive widths, in the order given."""
+    values = []
+    for item in text.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        try:
+            values.append(_positive_mm(item))
+        except argparse.ArgumentTypeError as bad:
+            raise argparse.ArgumentTypeError(
+                _("bar widths: {error}").format(error=bad)) from None
+    if not values:
+        raise argparse.ArgumentTypeError(_("at least one bar width is required"))
+    return tuple(values)
+
+
+def _powers(text: str) -> tuple[float, ...]:
+    """argparse type: comma-separated power fractions, each in (0, 1]."""
+    values = []
+    for item in text.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        try:
+            values.append(_fraction(item))
+        except argparse.ArgumentTypeError as bad:
+            raise argparse.ArgumentTypeError(
+                _("power levels: {error}").format(error=bad)) from None
+    if not values:
+        raise argparse.ArgumentTypeError(_("at least one power level is required"))
+    return tuple(values)
+
+
+def _count(text: str) -> int:
+    """argparse type: how many dose levels, at least two (a series needs a step)."""
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            _("expected a whole number, got {value}").format(value=text)) from None
+    if value < 2:
+        raise argparse.ArgumentTypeError(
+            _("a dose series needs at least two levels, got {value}").format(value=value))
     return value
 
 
@@ -157,6 +207,83 @@ def _cmd_preview(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _dose_levels(args: argparse.Namespace) -> tuple[float, ...]:
+    """The dose levels: ``--powers`` OR a geometric ``--from/--to/--count`` series.
+
+    Exactly one form; neither is a refusal, because a strip without levels would
+    silently expose the whole board at one power.
+    """
+    series = (args.start, args.stop, args.count)
+    if args.powers is not None and any(value is not None for value in series):
+        raise JobError(_("Use either --powers or --from/--to/--count, not both"))
+    if args.powers is not None:
+        return args.powers
+    if all(value is None for value in series):
+        raise JobError(
+            _("A dose strip needs its levels: --powers 0.02,0.03,... or --from, --to and --count"))
+    if any(value is None for value in series):
+        raise JobError(_("--from, --to and --count go together: one of them is missing"))
+    return powers_from_series(args.start, args.stop, args.count)
+
+
+def _pattern_report(args: argparse.Namespace, job) -> list[str]:
+    """What the operator needs to read the board: order, mapping, residual rule."""
+    if args.kind == "bars":
+        widths = "  ".join(f"{width:.3f}" for width in args.widths)
+        return [
+            _("Bars: widths in fixed order {widths} mm, gap = width, five lines per group")
+            .format(widths=widths),
+            _("Groups bottom to top: horizontal along X (Y resolution), then vertical across (X resolution)"),
+        ]
+    if args.kind == "dose":
+        lines = [_("Dose strip: {count} tiles bottom to top, each with its own power")
+                 .format(count=len(job.doses))]
+        for index, level in enumerate(job.doses, start=1):
+            lines.append(_("  {index}: y {y0} … {y1} mm, power {power}, S {s}")
+                         .format(index=index, y0=round(level.y0_mm, 3),
+                                 y1=round(level.y1_mm, 3),
+                                 power=round(level.power, 4), s=level.s_value))
+        return lines
+    lines = [_("Square {side} mm, line {width} mm, calibration {state}")
+             .format(side=args.side_mm, width=args.line_width_mm,
+                     state=_("applied") if args.with_calibration else _("not applied")),
+             _("Diagonals: d1 front-left to back-right, d2 front-right to back-left; theta = (d1 - d2) / (sqrt(2) * side)")]
+    if args.with_calibration:
+        lines.append(_("The measurement is a RESIDUAL: add it to the current scale_x, scale_y and skew_deg, do not replace them"))
+    return lines
+
+
+def _cmd_pattern(args: argparse.Namespace) -> int:
+    """Build a calibration pattern and write its program."""
+    if args.kind is None:
+        raise JobError(_("Choose a pattern: bars, dose or square"))
+    machine = load_profile(args.profile)
+    try:
+        built: Pattern
+        if args.kind == "bars":
+            built = bars(machine, widths=args.widths, length_mm=args.length_mm)
+        elif args.kind == "dose":
+            built = dose(machine, _dose_levels(args), tile_width_mm=args.tile_width_mm,
+                         tile_height_mm=args.tile_height_mm)
+        else:
+            built = square(machine, side_mm=args.side_mm,
+                           line_width_mm=args.line_width_mm,
+                           with_calibration=args.with_calibration)
+        job = build_job(built.layer, built.machine, power=getattr(args, "power", None),
+                        power_bands=built.bands, notes=built.notes,
+                        spot_compensation=args.with_compensation,
+                        place_mm=args.place)
+    except ValueError as bad:
+        raise JobError(_("Cannot build the pattern: {error}").format(error=bad)) from bad
+    _print_warnings(built.warnings + job.warnings)
+    write_gcode(job, args.output)
+    for line in _pattern_report(args, job):
+        print(line)
+    print(_("Wrote {path}: {rows} rows, {segments} segments")
+          .format(path=args.output, rows=job.inked_rows, segments=job.segment_count))
+    return EXIT_OK
+
+
 def _add_job_options(parser: argparse.ArgumentParser, *, power_required: bool) -> None:
     parser.add_argument("--profile", required=True, help=_("machine profile (TOML)"))
     parser.add_argument("--side", choices=SIDES, default=SIDE_TOP,
@@ -204,6 +331,71 @@ def build_parser() -> argparse.ArgumentParser:
     _add_job_options(job, power_required=True)
     job.add_argument("-o", "--output", required=True, help=_("output G-code"))
     job.set_defaults(handler=_cmd_job)
+
+    pattern = subparsers.add_parser(
+        "pattern", help=_("write a calibration program"),
+        description=_("write a calibration program: test bars, dose strip, skew square"))
+    pattern.set_defaults(handler=_cmd_pattern, kind=None)
+    kinds = pattern.add_subparsers(dest="kind", metavar="KIND")
+
+    bars_parser = kinds.add_parser(
+        "bars", help=_("test bars: lines and gaps of known widths"),
+        description=_("test bars: lines and gaps of known widths, horizontal then vertical"))
+    bars_parser.add_argument("--profile", required=True, help=_("machine profile (TOML)"))
+    bars_parser.add_argument("-o", "--output", required=True, help=_("output G-code"))
+    bars_parser.add_argument("--power", type=_fraction, required=True,
+                             help=_("laser power as a fraction of the module"))
+    bars_parser.add_argument("--widths", type=_widths, default=DEFAULT_WIDTHS_MM,
+                             help=_("bar widths, mm, in the order to draw them"))
+    bars_parser.add_argument("--length-mm", type=_positive_mm, default=DEFAULT_LENGTH_MM,
+                             help=_("bar length, mm"))
+    bars_parser.add_argument("--place", type=_place, default=(0.0, 0.0),
+                             help=_("where to put the run-up start, mm as X,Y"))
+    bars_parser.add_argument("--with-compensation", action="store_true",
+                             help=_("apply spot compensation (off by default: the bars measure the spot)"))
+    bars_parser.set_defaults(handler=_cmd_pattern)
+
+    dose_parser = kinds.add_parser(
+        "dose", help=_("dose strip: tiles stacked in Y, one power each"),
+        description=_("dose strip: tiles stacked in Y, bottom to top with rising power"))
+    dose_parser.add_argument("--profile", required=True, help=_("machine profile (TOML)"))
+    dose_parser.add_argument("-o", "--output", required=True, help=_("output G-code"))
+    dose_parser.add_argument("--powers", type=_powers, default=None,
+                             help=_("power fractions, comma separated, bottom to top"))
+    dose_parser.add_argument("--from", dest="start", type=_fraction, default=None,
+                             help=_("lowest power fraction of a geometric series"))
+    dose_parser.add_argument("--to", dest="stop", type=_fraction, default=None,
+                             help=_("highest power fraction of the series"))
+    dose_parser.add_argument("--count", type=_count, default=None,
+                             help=_("how many levels the series has"))
+    dose_parser.add_argument("--tile-width-mm", type=_positive_mm,
+                             default=DEFAULT_TILE_WIDTH_MM, help=_("tile width, mm"))
+    dose_parser.add_argument("--tile-height-mm", type=_positive_mm,
+                             default=DEFAULT_TILE_HEIGHT_MM, help=_("tile height, mm"))
+    dose_parser.add_argument("--place", type=_place, default=(0.0, 0.0),
+                             help=_("where to put the run-up start, mm as X,Y"))
+    dose_parser.add_argument("--with-compensation", action="store_true",
+                             help=_("apply spot compensation (refused with per-row power)"))
+    dose_parser.set_defaults(handler=_cmd_pattern)
+
+    square_parser = kinds.add_parser(
+        "square", help=_("skew square: a contour L×L to measure the diagonals"),
+        description=_("skew square: a contour L×L to measure the diagonals"))
+    square_parser.add_argument("--profile", required=True, help=_("machine profile (TOML)"))
+    square_parser.add_argument("-o", "--output", required=True, help=_("output G-code"))
+    square_parser.add_argument("--power", type=_fraction, required=True,
+                               help=_("laser power as a fraction of the module"))
+    square_parser.add_argument("--side-mm", type=_positive_mm, default=DEFAULT_SIDE_MM,
+                               help=_("square side, mm"))
+    square_parser.add_argument("--line-width-mm", type=_positive_mm,
+                               default=DEFAULT_LINE_WIDTH_MM, help=_("contour line width, mm"))
+    square_parser.add_argument("--with-calibration", action="store_true",
+                               help=_("draw it through the profile's calibration: the result is a residual"))
+    square_parser.add_argument("--place", type=_place, default=(0.0, 0.0),
+                               help=_("where to put the run-up start, mm as X,Y"))
+    square_parser.add_argument("--with-compensation", action="store_true",
+                               help=_("apply spot compensation (off by default)"))
+    square_parser.set_defaults(handler=_cmd_pattern)
 
     preview = subparsers.add_parser(
         "preview", help=_("draw what the machine will do"),
