@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gerber2ldi"
+description = "Laser direct imaging of photoresist from Gerber: raster, scan-line segments, machine jobs"
+readme = "README.md"
+# 3.11+: tomllib (machine profiles are TOML) is in the standard library.
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Denis" }]
+version = "0.1.0.dev0"
+dependencies = [
+    # Gerber X2/RS-274X AND Excellon parsing with an object model (primitives
+    # with polarity) — the source of the raster in v1 and of direct scan-line
+    # geometry in v2 (design §3.2-3.3), and of the drill positions for alignment
+    # (design §6).
+    "gerbonara==1.6.3",
+    "numpy==2.5.4",
+    # 1-bit TIFF with CCITT G4 compression (design §3.2) and the downscaled preview.
+    "pillow==13.0.0",
+    # Serial link to the controller (GRBL first, own STM32 later).
+    "pyserial==3.5",
+]
+
+[project.optional-dependencies]
+gui = [
+    "PyQt6==6.11.0",
+]
+# Hole finding for alignment (design §6): circle fit on the camera frame.
+vision = [
+    "opencv-python-headless==5.0.0.93",
+]
+# Second rasterizer, ONLY for the step-1 comparison against gerbonara (which one
+# draws the board faithfully and fits in memory). Not a runtime dependency: 2.4.3
+# pulls a web stack (Quart, Flask, Hypercorn) with it — resolved 2026-10-20.
+pygerber = [
+    "pygerber==2.4.3",
+]
+dev = [
+    "pytest==9.1.1",
+    "pytest-timeout==2.4.0",
+    # `-n auto` on the command line, NOT in addopts (rules: claude.md п.32).
+    "pytest-xdist==3.8.0",
+    "babel==2.18.0",
+    "pyflakes==4.0.3",
+]
+
+[project.scripts]
+gerber2ldi = "gerber2ldi.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["gerber2ldi*", "gui*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.mo", "*.po"]

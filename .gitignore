@@ -1,0 +1,34 @@
+# ─────────────────────────── PYTHON ───────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+
+.venv/
+venv/
+
+*.egg-info/
+build/
+dist/
+
+# Temporary probes and intermediate checks (rules: claude.md п.21) — kept on
+# disk, never committed.
+diagnostics/**
+
+# ─────────────────────────── INTERNAL ───────────────────────────
+# Our internal documentation (rules: claude.md п.4); travels by Syncthing.
+techdocs/
+.claude
+
+# ─────────────────────────── OUTPUT ───────────────────────────
+# Rasters, jobs and G-code are build products of a board, not sources.
+out/
+*.tif
+*.tiff
+*.nc
+
+# ─────────────────────────── IDE / OS ───────────────────────────
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
