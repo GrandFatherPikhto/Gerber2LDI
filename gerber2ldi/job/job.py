@@ -292,7 +292,9 @@ def build_job(layer: Layer, machine: Machine, *, side: str = SIDE_TOP,
     ``frame`` is the board outline (usually Edge_Cuts). It — not this layer's copper —
     defines the mirror axis, the placement and the table check, so the two sides of one
     board land on the same rectangle even though F_Cu and B_Cu have different copper.
-    Without it the bottom side is refused: its own copper would silently shift it.
+    Without it each side is mirrored and placed by its own copper: correct for ONE side
+    (including copper at the bottom, ``--side bottom``), wrong for a second side of the
+    same board — hence a warning, not a refusal.
     """
     _check_choice(side, SIDES, _("side"))
     _check_choice(process, PROCESSES, _("process"))
@@ -300,9 +302,6 @@ def build_job(layer: Layer, machine: Machine, *, side: str = SIDE_TOP,
         raise JobError(
             _("Table origin {origin} is not supported yet: only {supported}")
             .format(origin=machine.table.origin, supported=SUPPORTED_ORIGIN))
-    if side == SIDE_BOTTOM and frame is None:
-        raise JobError(
-            _("The bottom side without a common frame will not line up with the top: pass the board outline with --frame"))
     if power is None and not power_bands:
         raise JobError(_("Power is required: one value, or bands for a dose strip"))
     if power is not None and power_bands:
@@ -317,7 +316,7 @@ def build_job(layer: Layer, machine: Machine, *, side: str = SIDE_TOP,
     warnings: list[str] = list(machine.warnings)
     if frame is None:
         warnings.append(
-            _("No common frame: the mirror and the placement use this layer's own copper, so a second side would not line up"))
+            _("No common frame: the mirror and the placement use this layer's own copper; a second side of the same board needs --frame"))
 
     radius: float | None = None
     if spot_compensation:

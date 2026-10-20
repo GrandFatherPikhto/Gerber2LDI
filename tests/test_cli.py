@@ -129,12 +129,11 @@ def test_job_places_both_sides_on_the_board_outline(tmp_path, capsys, profile_te
                  "--frame", str(frame), "-o", str(target)]) == 0
     assert "frame: x " in target.read_text()
     capsys.readouterr()
-    # The bottom side needs the same outline: without it — one line, exit 2.
+    # Without the outline a WARNING, not a refusal: one side is a legitimate run.
     assert main(["job", str(path), "--profile", str(profile), "--power", "0.5",
-                 "--side", "bottom", "-o", str(target)]) == 2
+                 "--side", "bottom", "-o", str(target)]) == 0
     captured = capsys.readouterr()
-    assert captured.out == ""
-    assert "common frame" in captured.err
+    assert "--frame" in captured.err
 
 
 def test_job_refuses_power_above_the_ceiling(tmp_path, capsys, profile_text,

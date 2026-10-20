@@ -177,13 +177,25 @@ def test_the_frame_keeps_its_physical_size_through_the_calibration(
     assert (y1 - y0) * scale_y == pytest.approx(80.0, abs=0.01)
 
 
-def test_the_bottom_side_without_a_frame_is_refused(tmp_path, make_machine):
-    """Its own copper would shift it against the top side — a refusal, not a guess."""
+def test_the_bottom_side_without_a_frame_builds_and_warns(tmp_path, make_machine):
+    """One side with copper at the bottom is legitimate: a warning, not a refusal.
+
+    The program cannot know whether a second side will follow, and a refusal here would
+    block exactly the single-sided case (Денис: «всё одно буду одну сторону гонять»).
+    """
     machine = make_machine(calibration_text=NO_CALIBRATION)
     bottom = _layer(tmp_path, "B_Cu.gbr", BACK)
-    with pytest.raises(JobError, match="common frame"):
-        build_job(bottom, machine, side=SIDE_BOTTOM, power=0.5,
-                  spot_compensation=False)
+    job = build_job(bottom, machine, side=SIDE_BOTTOM, power=0.5,
+                    spot_compensation=False)
+    assert job.frame_box is None
+    assert any("needs --frame" in warning for warning in job.warnings)
+
+
+def test_a_frame_means_no_such_warning_on_either_side(tmp_path, make_machine):
+    machine = make_machine(calibration_text=NO_CALIBRATION)
+    top, bottom, _frame = _both_sides(tmp_path, machine)
+    for job in (top, bottom):
+        assert not any("No common frame" in warning for warning in job.warnings)
 
 
 def test_the_top_side_without_a_frame_still_works_and_says_so(tmp_path, make_machine):

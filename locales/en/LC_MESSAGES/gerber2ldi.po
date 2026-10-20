@@ -356,14 +356,11 @@ msgstr ""
 msgid "Bar width {width} mm is below the row step {step} mm: it may print as one row or vanish"
 msgstr ""
 
-msgid "The bottom side without a common frame will not line up with the top: pass the board outline with --frame"
-msgstr "The bottom side without a common frame will not line up with the top: pass the board outline with --frame"
-
-msgid "No common frame: the mirror and the placement use this layer's own copper, so a second side would not line up"
-msgstr "No common frame: the mirror and the placement use this layer's own copper, so a second side would not line up"
+msgid "No common frame: the mirror and the placement use this layer's own copper; a second side of the same board needs --frame"
+msgstr ""
 
 msgid "Copper sticks out of the board frame: x {x0} … {x1} against {f0} … {f1}, y {y0} … {y1} against {f2} … {f3} mm"
-msgstr "Copper sticks out of the board frame: x {x0} … {x1} against {f0} … {f1}, y {y0} … {y1} against {f2} … {f3} mm"
+msgstr ""
 
 msgid "board outline (Edge_Cuts) shared by both sides"
-msgstr "board outline (Edge_Cuts) shared by both sides"
+msgstr ""

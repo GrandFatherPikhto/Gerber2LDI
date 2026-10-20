@@ -95,8 +95,9 @@ gerber2ldi job B_Cu.gbr --profile profiles/china_ldi_grbl.toml \
 ```
 
 * `--frame` is the board outline, the SAME file for both sides. It is the rectangle
-  the figure is mirrored about and placed by, so the two sides land on each other;
-  the bottom side without it is a refusal.
+  the figure is mirrored about and placed by, so the two sides land on each other.
+  Without it each side is placed by its own copper: good for one side, and the program
+  says so — a warning names `--frame` for the second side.
 * `--side bottom` mirrors the figure: the resist is exposed from the other side.
 * `--process` is what the resist is for: `etch-resist` lights the COPPER (the resist
   stays where the copper is), `plating-resist` lights the GAPS. **One board is one
