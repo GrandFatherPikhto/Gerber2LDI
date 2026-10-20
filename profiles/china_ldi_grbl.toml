@@ -1,43 +1,48 @@
-# Gerber2LDI — machine TYPE profile, a ready-made solution (design §13.1).
+# Gerber2LDI — machine TYPE profile: a ready-made solution (design §13.1).
 #
-# This file describes the KIND of machine and travels in git. Nothing measured on
-# MY instance belongs here: put measurements into the calibration file next to it,
-# `china_ldi_grbl.calibration.toml` (not shipped: it does not exist until I measure).
+# This file describes the KIND of machine and travels in git, so its comments are
+# in English: somebody else may pick it up as a starting point.
 #
-# There is NO PORT here on purpose: the profile goes between machines by Syncthing,
-# and the port is different on each one. The port is a command-line argument.
+# Nothing measured on MY instance belongs here. Measurements go into the
+# calibration file next to it, `china_ldi_grbl.calibration.toml`, which is not
+# shipped: it does not exist until the machine is measured.
+#
+# There is NO PORT here on purpose: the profile goes between machines by
+# Syncthing, and the port is different on each one. The port is a command-line
+# argument.
 #
 # Calibration file format (create it when the machine is measured):
 #
 #   [calibration]
-#   scale_x = 1.0            # measured: real mm per commanded mm
-#   scale_y = 1.0
-#   skew_deg = 0.0           # measured: non-perpendicularity of the axes
-#   spot_radius_um = 0.0     # measured: 0 means "not measured yet"
+#   scale_x = 1.0            # measured: real mm per commanded mm, within [0.95, 1.05]
+#   scale_y = 1.0            # same bounds: a belt stretch moves this by tenths of a percent
+#   skew_deg = 0.0           # measured: axis non-perpendicularity, within ±5 degrees
+#   spot_radius_um = 0.0     # measured: 0 or absent means "not measured yet"
 #   measured = 2026-10-20    # date of the measurement
 #
 # Without that file the machine is assumed uncalibrated (scale 1, skew 0) and the
-# program says so in one line.
+# program says so in one line. Without a spot radius a job is refused unless
+# compensation is switched off explicitly (--no-spot-compensation).
 
 [machine]
 name = "china-ldi"
 firmware = "grbl"            # grbl | grblhal | fluidnc
 
 [table]
-size_x_mm = 210              # измерить: какая из осей 270 — уточнить
+size_x_mm = 210              # MEASURE: which axis is the 270 one is still unclear
 size_y_mm = 270
 origin = "front-left"        # front-left | front-right | back-left | back-right
 
 [laser]
 wavelength_nm = 405
-power_w = 0.0                # измерить: ОПТИЧЕСКАЯ мощность модуля, не по шильдику
-usable_fraction = 0.8        # потолок доли мощности; S выше не выдаём НИКОГДА
-s_max = 1000                 # измерить: $30 прошивки — какое S есть полная мощность
-pwm_hz = 1000                # измерить: частота ШИМ прошивки (проверка «ШИМ рисует штрихи»)
+power_w = 0.0                # MEASURE: OPTICAL power of the module, not the label
+usable_fraction = 0.8        # power ceiling as a fraction; S above this is never issued
+s_max = 1000                 # MEASURE: firmware $30 — which S is full power
+pwm_hz = 1000                # MEASURE: firmware PWM frequency (the "PWM draws dashes" check)
 
 [scan]
-scan_axis = "x"              # измерить: какая ось сканирует
-row_step_um = 20             # измерить
-speed_mm_s = 50              # измерить
-overscan_mm = 5              # измерить по допуску дозы (design §4.2)
-bidirectional = false        # начинаем с одной стороны (design §4.3)
+scan_axis = "x"              # MEASURE: which axis scans
+row_step_um = 20             # MEASURE
+speed_mm_s = 50              # MEASURE
+overscan_mm = 5              # MEASURE against the dose tolerance (design §4.2)
+bidirectional = false        # start with one direction (design §4.3)

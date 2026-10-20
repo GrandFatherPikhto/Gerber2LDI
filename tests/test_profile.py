@@ -181,11 +181,32 @@ def test_zero_spot_means_not_measured(tmp_path):
     ("skew_deg = 0.05", "skew_deg = 11.5", "calibration.skew_deg"),
     ("scale_x = 1.002", "scale_x = 0", "calibration.scale_x"),
     ("measured = 2026-10-20", 'measured = "20.10.2026"', "calibration.measured"),
-], ids=["skew beyond", "scale zero", "bad date"])
+    # A negative or non-finite spot used to become "not measured" silently, and the
+    # job was then built WITHOUT compensation. TOML itself accepts nan and inf.
+    ("spot_radius_um = 150", "spot_radius_um = -150", "calibration.spot_radius_um"),
+    ("spot_radius_um = 150", "spot_radius_um = nan", "calibration.spot_radius_um"),
+    ("spot_radius_um = 150", "spot_radius_um = inf", "calibration.spot_radius_um"),
+    # Same trap as skew: percent instead of a factor, and a 20 % error.
+    ("scale_x = 1.002", "scale_x = 100.2", "calibration.scale_x"),
+    ("scale_x = 1.002", "scale_x = 1.2", "calibration.scale_x"),
+    ("scale_y = 0.999", "scale_y = 0.8", "calibration.scale_y"),
+], ids=["skew beyond", "scale zero", "bad date", "spot negative", "spot nan",
+        "spot inf", "scale in percent", "scale 1.2", "scale 0.8"])
 def test_bad_calibration_is_refused(tmp_path, old, new, expected):
     _write_calibration(tmp_path, CALIBRATION.replace(old, new))
     with pytest.raises(ProfileError, match=expected):
         load_profile(_write(tmp_path, PROFILE))
+
+
+@pytest.mark.parametrize("scale", ["0.95", "1.05"])
+def test_scale_bounds_are_inclusive(tmp_path, scale):
+    """The bounds themselves are legal: a real belt stretch lives inside them."""
+    text = (CALIBRATION.replace("scale_x = 1.002", f"scale_x = {scale}")
+            .replace("scale_y = 0.999", f"scale_y = {scale}"))
+    _write_calibration(tmp_path, text)
+    machine = load_profile(_write(tmp_path, PROFILE))
+    assert machine.calibration.scale_x == pytest.approx(float(scale))
+    assert machine.calibration.scale_y == pytest.approx(float(scale))
 
 
 def test_calibration_may_be_read_alone(tmp_path):

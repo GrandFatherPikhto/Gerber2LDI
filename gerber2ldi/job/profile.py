@@ -40,6 +40,16 @@ MAX_SKEW_DEG = 5.0
 """Beyond this the machine is broken, not skewed. The guard exists to catch a
 degrees/radians mix-up: 0.2 rad written into ``skew_deg`` reads as 11.5°."""
 
+SCALE_RANGE = (0.95, 1.05)
+"""Allowed measured axis scale — the same kind of guard as MAX_SKEW_DEG above.
+
+A belt stretch or a wrong microstep setting moves the real/commanded ratio by
+tenths of a percent, so anything outside ±5 % is not a calibration: 100.2 means the
+file holds PERCENT (or ppm) instead of a factor, 1.2 means a 20 % error that would
+double the size of every feature once the sign of the mistake is right. Refusing
+beats silently scaling a board by 100×.
+"""
+
 ORIGINS = ("front-left", "front-right", "back-left", "back-right")
 SCAN_AXES = ("x", "y")
 
@@ -188,19 +198,24 @@ def load_calibration(path: str | Path, *, required: bool = False) -> Calibration
         raise ProfileError(_("Profile {path}: [calibration] section is required")
                            .format(path=source))
 
-    def number(key: str, *, positive: bool) -> float:
+    def scale(key: str) -> float:
+        """A measured axis factor; absent means 1.0, out of range is a refusal."""
         if key not in section:
             return 1.0
         value = section[key]
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             _fail(source, f"calibration.{key}", "a number", value)
         number_value = float(value)
-        if not math.isfinite(number_value) or (positive and number_value <= 0.0):
-            _fail(source, f"calibration.{key}", "positive", value)
+        low, high = SCALE_RANGE
+        if not math.isfinite(number_value):
+            _fail(source, f"calibration.{key}", "finite", value)
+        if not low <= number_value <= high:
+            _fail(source, f"calibration.{key}",
+                  f"a factor in [{low:g}, {high:g}]", value)
         return number_value
 
-    scale_x = number("scale_x", positive=True)
-    scale_y = number("scale_y", positive=True)
+    scale_x = scale("scale_x")
+    scale_y = scale("scale_y")
 
     skew_deg = 0.0
     if "skew_deg" in section:
@@ -217,8 +232,16 @@ def load_calibration(path: str | Path, *, required: bool = False) -> Calibration
     if raw_spot is not None:
         if isinstance(raw_spot, bool) or not isinstance(raw_spot, (int, float)):
             _fail(source, "calibration.spot_radius_um", "a number", raw_spot)
-        if float(raw_spot) > 0.0:  # 0 means "not measured yet" (template value)
-            spot_radius_mm = float(raw_spot) / UM_PER_MM
+        spot_um = float(raw_spot)
+        # TOML happily carries `nan` and `inf`, and a negative or non-finite radius
+        # is a broken measurement, not "unmeasured": the old `> 0` test turned all
+        # three into "not measured" and then silently built a job without
+        # compensation. "Not measured" is 0 or an absent key, nothing else.
+        if not math.isfinite(spot_um):
+            _fail(source, "calibration.spot_radius_um", "finite", raw_spot)
+        if spot_um < 0.0:
+            _fail(source, "calibration.spot_radius_um", "non-negative", raw_spot)
+        spot_radius_mm = spot_um / UM_PER_MM if spot_um > 0.0 else None
 
     measured: date | None = None
     raw_date = section.get("measured")
