@@ -10,3 +10,63 @@ msgstr ""
 
 msgid "Laser direct imaging of photoresist from Gerber files."
 msgstr "Засветка фоторезиста лазером по файлам Gerber."
+
+msgid "show what is in a Gerber layer"
+msgstr "показать, что лежит в слое гербера"
+
+msgid "turn a Gerber layer into rows and a preview TIFF"
+msgstr "превратить слой гербера в строки и превью TIFF"
+
+msgid "Gerber file"
+msgstr "Файл гербера"
+
+msgid "output TIFF"
+msgstr "выходной файл TIFF"
+
+msgid "preview pixel size across, mm"
+msgstr "размер пикселя превью по X, мм"
+
+msgid "machine row step, mm"
+msgstr "шаг строк станка, мм"
+
+msgid "File: {path}"
+msgstr "Файл: {path}"
+
+msgid "Units in file: {unit}"
+msgstr "Единицы в файле: {unit}"
+
+msgid "Size: {width:.3f} x {height:.3f} mm"
+msgstr "Размер: {width:.3f} x {height:.3f} мм"
+
+msgid "Apertures: {count}"
+msgstr "Апертур: {count}"
+
+msgid "Shapes: {count}"
+msgstr "Фигур: {count}"
+
+msgid "Clear polarity present: {yes_no}"
+msgstr "Светлая полярность есть: {yes_no}"
+
+msgid "yes"
+msgstr "да"
+
+msgid "no"
+msgstr "нет"
+
+msgid "Wrote {path}: {rows} rows, {filled} with copper"
+msgstr "Записано {path}: строк {rows}, с медью {filled}"
+
+msgid "File not found: {path}"
+msgstr "Файл не найден: {path}"
+
+msgid "Cannot read Gerber file {path}: {error}"
+msgstr "Не удалось прочитать гербер {path}: {error}"
+
+msgid "Cannot read drill file {path}: {error}"
+msgstr "Не удалось прочитать сверловку {path}: {error}"
+
+msgid "expected a number, got {value}"
+msgstr "ожидалось число, пришло {value}"
+
+msgid "expected a positive size in mm, got {value}"
+msgstr "ожидался положительный размер в мм, пришло {value}"

@@ -10,3 +10,63 @@ msgstr ""
 
 msgid "Laser direct imaging of photoresist from Gerber files."
 msgstr ""
+
+msgid "show what is in a Gerber layer"
+msgstr ""
+
+msgid "turn a Gerber layer into rows and a preview TIFF"
+msgstr ""
+
+msgid "Gerber file"
+msgstr ""
+
+msgid "output TIFF"
+msgstr ""
+
+msgid "preview pixel size across, mm"
+msgstr ""
+
+msgid "machine row step, mm"
+msgstr ""
+
+msgid "File: {path}"
+msgstr ""
+
+msgid "Units in file: {unit}"
+msgstr ""
+
+msgid "Size: {width:.3f} x {height:.3f} mm"
+msgstr ""
+
+msgid "Apertures: {count}"
+msgstr ""
+
+msgid "Shapes: {count}"
+msgstr ""
+
+msgid "Clear polarity present: {yes_no}"
+msgstr ""
+
+msgid "yes"
+msgstr ""
+
+msgid "no"
+msgstr ""
+
+msgid "Wrote {path}: {rows} rows, {filled} with copper"
+msgstr ""
+
+msgid "File not found: {path}"
+msgstr ""
+
+msgid "Cannot read Gerber file {path}: {error}"
+msgstr ""
+
+msgid "Cannot read drill file {path}: {error}"
+msgstr ""
+
+msgid "expected a number, got {value}"
+msgstr ""
+
+msgid "expected a positive size in mm, got {value}"
+msgstr ""
