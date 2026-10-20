@@ -16,8 +16,9 @@ Three rules these patterns exist to keep:
 from .bars import DEFAULT_LENGTH_MM, DEFAULT_WIDTHS_MM, bars
 from .base import Pattern, calibration_note
 from .dose import DEFAULT_TILE_HEIGHT_MM, DEFAULT_TILE_WIDTH_MM, dose, powers_from_series
-from .square import (DEFAULT_LINE_WIDTH_MM, DEFAULT_SIDE_MM, diagonals_from_rows,
-                     skew_from_diagonals, square, without_calibration)
+from .square import (DEFAULT_LINE_WIDTH_MM, DEFAULT_SIDE_MM, SquareMeasurement,
+                     diagonals_from_rows, measure_from_rows, skew_from_diagonals,
+                     square, update_formulas, without_calibration)
 
 __all__ = [
     "DEFAULT_LENGTH_MM",
@@ -27,12 +28,15 @@ __all__ = [
     "DEFAULT_TILE_WIDTH_MM",
     "DEFAULT_WIDTHS_MM",
     "Pattern",
+    "SquareMeasurement",
     "bars",
     "calibration_note",
     "diagonals_from_rows",
     "dose",
+    "measure_from_rows",
     "powers_from_series",
     "skew_from_diagonals",
     "square",
+    "update_formulas",
     "without_calibration",
 ]

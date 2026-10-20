@@ -254,7 +254,7 @@ msgstr ""
 msgid "Bars: widths in fixed order {widths} mm, gap = width, five lines per group"
 msgstr ""
 
-msgid "Groups bottom to top: horizontal along X (Y resolution), then vertical across (X resolution)"
+msgid "Layout: horizontal groups at the bottom left (along X: Y resolution), vertical groups to their right (along Y: X resolution)"
 msgstr ""
 
 msgid "Dose strip: {count} tiles bottom to top, each with its own power"
@@ -275,7 +275,10 @@ msgstr ""
 msgid "Diagonals: d1 front-left to back-right, d2 front-right to back-left; theta = (d1 - d2) / (sqrt(2) * side)"
 msgstr ""
 
-msgid "The measurement is a RESIDUAL: add it to the current scale_x, scale_y and skew_deg, do not replace them"
+msgid "How the measurement becomes new calibration values (the scales multiply, the angle adds):"
+msgstr ""
+
+msgid "Write these numbers into the calibration file"
 msgstr ""
 
 msgid "Choose a pattern: bars, dose or square"

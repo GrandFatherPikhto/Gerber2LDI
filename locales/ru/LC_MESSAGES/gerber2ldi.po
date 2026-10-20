@@ -254,8 +254,8 @@ msgstr "--from, --to и --count идут вместе: одного из них 
 msgid "Bars: widths in fixed order {widths} mm, gap = width, five lines per group"
 msgstr "Штрихи: ширины в фиксированном порядке {widths} мм, промежуток равен ширине, пять линий в группе"
 
-msgid "Groups bottom to top: horizontal along X (Y resolution), then vertical across (X resolution)"
-msgstr "Группы снизу вверх: горизонтальные вдоль X (разрешение по Y), затем вертикальные поперёк (разрешение по X)"
+msgid "Layout: horizontal groups at the bottom left (along X: Y resolution), vertical groups to their right (along Y: X resolution)"
+msgstr "Раскладка: горизонтальные группы слева внизу (вдоль X: разрешение по Y), вертикальные справа от них (вдоль Y: разрешение по X)"
 
 msgid "Dose strip: {count} tiles bottom to top, each with its own power"
 msgstr "Полоска дозы: {count} прямоугольников снизу вверх, у каждого своя мощность"
@@ -275,8 +275,11 @@ msgstr "не применена"
 msgid "Diagonals: d1 front-left to back-right, d2 front-right to back-left; theta = (d1 - d2) / (sqrt(2) * side)"
 msgstr "Диагонали: d1 — от переднего левого к заднему правому, d2 — от переднего правого к заднему левому; theta = (d1 - d2) / (sqrt(2) * сторона)"
 
-msgid "The measurement is a RESIDUAL: add it to the current scale_x, scale_y and skew_deg, do not replace them"
-msgstr "Замер — это ОСТАТОК: прибавьте его к текущим scale_x, scale_y и skew_deg, а не заменяйте их"
+msgid "How the measurement becomes new calibration values (the scales multiply, the angle adds):"
+msgstr "Как замер превращается в новые значения калибровки (масштабы умножаются, угол складывается):"
+
+msgid "Write these numbers into the calibration file"
+msgstr "Запишите эти числа в файл калибровки"
 
 msgid "Choose a pattern: bars, dose or square"
 msgstr "Выберите шаблон: bars, dose или square"

@@ -8,7 +8,9 @@ Two things are being checked, and they are different:
   * DISCIPLINE — without `--with-calibration` the square must ignore the profile's
     scale and skew (it measures them, so drawing it through them would measure their
     residual), and WITH the flag at a calibration equal to the real distortion the
-    measurement must be a residual of about zero.
+    measurement must be a residual of about zero, whose update multiplies the scale
+    (a factor) and adds the angle (приёмка Ш5: "add the residual" was wrong for the
+    scales).
 
 Sign convention (design §17, the calibration comments in the profile):
 
@@ -21,12 +23,14 @@ The swapped-diagonals control is here because a sign error turns a correction in
 DOUBLING of the error between the two sides of a double-sided board.
 """
 import math
+from dataclasses import replace
 
 import pytest
 
 from gerber2ldi.errors import JobError
 from gerber2ldi.job import build_job
-from gerber2ldi.patterns import (diagonals_from_rows, skew_from_diagonals, square)
+from gerber2ldi.patterns import (diagonals_from_rows, measure_from_rows,
+                                 skew_from_diagonals, square)
 from gerber2ldi.scan import ScanRow
 
 SIDE_MM = 150.0
@@ -82,7 +86,7 @@ def test_the_square_ignores_the_calibration_it_measures(make_machine):
     assert pattern.machine.calibration.skew_deg == pytest.approx(0.0)
     assert pattern.machine.calibration.spot_radius_mm == pytest.approx(0.15), \
         "the measured spot is KEPT, so --with-compensation still has a number"
-    assert "calibration: NOT applied" in pattern.notes[-1]
+    assert any("calibration: NOT applied" in note for note in pattern.notes)
 
     measured = _measured_deg(pattern, machine.calibration)
     assert measured == pytest.approx(0.1, abs=TOLERANCE_DEG)
@@ -101,7 +105,7 @@ def test_with_the_flag_the_measurement_is_a_residual_of_zero(make_machine):
     machine = make_machine(calibration_text=REAL)
     pattern = square(machine, with_calibration=True)
     assert pattern.machine.calibration.skew_deg == pytest.approx(0.1)
-    assert "calibration: applied" in pattern.notes[-1]
+    assert any("calibration: applied" in note for note in pattern.notes)
     measured = _measured_deg(pattern, machine.calibration)
     assert measured == pytest.approx(0.0, abs=TOLERANCE_DEG)
 
@@ -149,3 +153,53 @@ def test_a_square_too_big_for_the_table_is_refused_with_numbers(make_machine):
     fits = square(machine, side_mm=SIDE_MM)
     job = build_job(fits.layer, fits.machine, power=0.6, spot_compensation=False)
     assert job.box[2] - job.box[0] == pytest.approx(SIDE_MM, abs=0.01)
+
+
+def test_the_note_reports_the_file_values_even_when_it_drew_without_them(make_machine):
+    """Приёмка Ш5, правка 1: the header said 1.000000 / 0.0000 for a profile that
+    says 1.002 / 0.1 — the note describes the FILE, not the stripped copy."""
+    machine = make_machine(calibration_text=REAL)
+    pattern = square(machine)
+    note = next(line for line in pattern.notes if line.startswith("calibration:"))
+    assert "NOT applied" in note
+    assert "scale_x=1.002000" in note
+    assert "scale_y=0.998000" in note
+    assert "skew=0.1000" in note
+
+
+def test_the_formulas_multiply_the_scale_and_add_the_angle(make_machine):
+    """A scale is a FACTOR (multiply), a skew is an ANGLE (add) — приёмка Ш5.
+
+    This cell is TEXT on purpose: at 1.002 the sum and the product differ in the
+    sixth digit, so only the printed formula can tell the operator — and this test —
+    which operation is meant.
+    """
+    machine = make_machine(calibration_text=REAL)
+    with_flag = square(machine, with_calibration=True).formulas
+    assert with_flag[0] == "scale_x_new = 1.002000 * (measured X side / 150.000 mm)"
+    assert with_flag[1] == "scale_y_new = 0.998000 * (measured Y side / 150.000 mm)"
+    assert with_flag[2].startswith("skew_new = 0.1000 deg + theta")
+    absolute = square(machine).formulas
+    assert absolute[0] == "scale_x = measured X side / 150.000 mm"
+    assert absolute[1] == "scale_y = measured Y side / 150.000 mm"
+    assert absolute[2].startswith("skew_deg = theta")
+
+
+def test_the_residual_multiplies_back_to_the_real_distortion(make_machine):
+    """Real scale_x 1.002, the file says 1.001: the drawn side is 1.001 of nominal
+    and 1.001 × 1.001 = 1.002 — the product the printed formula asks for.
+
+    The Y axis is calibrated exactly here, so the cell also pins `measure_from_rows`:
+    the X side comes from the front row, the Y side from the row centres plus a step.
+    """
+    file_says = ("[calibration]\nscale_x = 1.001\nscale_y = 1.0\nskew_deg = 0.0\n"
+                 "spot_radius_um = 150\nmeasured = 2026-10-20\n")
+    machine = make_machine(calibration_text=file_says)
+    pattern = square(machine, with_calibration=True)
+    job = build_job(pattern.layer, pattern.machine, power=0.6, spot_compensation=False)
+    worse_machine = replace(machine.calibration, scale_x=1.002)
+    measurement = measure_from_rows(_drawn_rows(job, worse_machine))
+    assert measurement.y_side_mm == pytest.approx(SIDE_MM, abs=1e-6)
+    ratio = measurement.x_side_mm / SIDE_MM
+    assert ratio == pytest.approx(1.001, rel=2e-4)
+    assert machine.calibration.scale_x * ratio == pytest.approx(1.002, rel=2e-4)

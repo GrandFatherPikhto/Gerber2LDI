@@ -193,7 +193,9 @@ def test_pattern_square_states_whether_the_calibration_was_applied(tmp_path, cap
     assert main(["pattern", "square", "--profile", str(profile), "--power", "0.6",
                  "--with-calibration", "-o", str(target)]) == 0
     out = capsys.readouterr().out
-    assert "RESIDUAL" in out
+    # The formula says MULTIPLY, because a scale is a factor, not an offset.
+    assert "scale_x_new = 1.000000 * (measured X side / 150.000 mm)" in out
+    assert "scale_x_new = 1.000000 * (measured X side / 150.000 mm)" in target.read_text()
     assert "calibration: applied" in target.read_text()
 
 

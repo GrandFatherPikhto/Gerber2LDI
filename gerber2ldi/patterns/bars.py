@@ -69,7 +69,8 @@ def bars(machine: Machine, *, widths: tuple[float, ...] = DEFAULT_WIDTHS_MM,
 
     notes = (
         f"pattern: test bars, {LINES_PER_GROUP} lines per group, gap = line width",
-        "groups, fixed order: horizontal along X (Y resolution), then vertical across (X resolution)",
+        "layout: horizontal groups at the bottom left (lines along X: Y resolution), "
+        "vertical groups to their right (lines along Y: X resolution)",
         "widths in order, mm: " + " ".join(f"{width:.3f}" for width in widths),
         calibration_note(machine, applied=True),
     )

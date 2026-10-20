@@ -45,13 +45,22 @@ tiles in Y, bottom to top with rising power; the levels are either an explicit
 multiplicatively), and the mapping "tile → y, power, S" is printed and written into
 the `.nc` header. A level above `usable_fraction` is a refusal, not a clamp.
 
-`square` draws an L×L contour. Measure both diagonals with calipers: `d1` from the
-front-left corner to the back-right one, `d2` from the front-right to the back-left,
-then `skew_deg = (d1 - d2) / (√2 · L)` with L MEASURED, not nominal. Without
-`--with-calibration` the square ignores the profile's scale and skew, so the
-measurement is absolute and goes into the calibration file as is; with the flag the
-square is drawn through them and the measurement is a RESIDUAL — add it to the
-current values, do not replace them (the command says so on stdout).
+`square` draws an L×L contour. Measure both diagonals AND both sides with calipers:
+`d1` from the front-left corner to the back-right one, `d2` from the front-right to
+the back-left, then `theta = (d1 - d2) / (√2 · L)` with L MEASURED, not nominal.
+Without `--with-calibration` the square ignores the profile's scale and skew, so the
+measurement is absolute: `scale_x = measured X side / nominal side`, `skew_deg = theta`.
+With the flag the square is drawn through them and the command prints the update with
+the machine's numbers already substituted:
+
+```
+scale_x_new = 1.002000 * (measured X side / 150.000 mm)
+skew_new    = 0.1000 deg + theta
+```
+
+A scale is a FACTOR, so it is multiplied; a skew is an ANGLE, so it is added — the
+same lines go into the `.nc` header, so the copy on stdout and the copy on the
+machine cannot drift.
 
 All three run without spot compensation unless `--with-compensation` is given: the
 bars are what the spot is measured FROM, so demanding the measurement first would be

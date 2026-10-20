@@ -20,13 +20,20 @@ from ..source import Layer
 
 @dataclass(frozen=True, slots=True)
 class Pattern:
-    """A calibration pattern: the figure, the machine model it asks for, its notes."""
+    """A calibration pattern: the figure, the machine model it asks for, its notes.
+
+    ``formulas`` is the ASCII text of how a measurement becomes a calibration value.
+    It goes into the ``.nc`` header AND to stdout verbatim: these are formulas with
+    the machine's numbers substituted, so two hand-translated copies would drift.
+    Only the line introducing them is translated.
+    """
 
     layer: Layer
     machine: Machine
     notes: tuple[str, ...] = ()
     bands: tuple[PowerBand, ...] = ()
     warnings: tuple[str, ...] = ()
+    formulas: tuple[str, ...] = ()
 
 
 def calibration_note(machine: Machine, *, applied: bool) -> str:
@@ -35,7 +42,11 @@ def calibration_note(machine: Machine, *, applied: bool) -> str:
     A pattern must not be drawn through the calibration it measures, so
     ``applied=False`` is the normal case for the skew square; then the measurement is
     ABSOLUTE and goes into the calibration file as is. With ``applied=True`` the
-    measurement is a RESIDUAL: it is added to these values, not written over them.
+    measurement is a RESIDUAL — see the pattern's ``formulas`` for how it combines
+    with these values (the scales multiply, the angle adds).
+
+    ALWAYS pass the machine as it came from the profile: the note reports what the
+    FILE has, even when the drawing used a stripped copy of it.
     """
     calibration = machine.calibration
     values = (f"scale_x={calibration.scale_x:.6f} "

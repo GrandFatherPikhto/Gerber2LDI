@@ -226,14 +226,19 @@ def _dose_levels(args: argparse.Namespace) -> tuple[float, ...]:
     return powers_from_series(args.start, args.stop, args.count)
 
 
-def _pattern_report(args: argparse.Namespace, job) -> list[str]:
-    """What the operator needs to read the board: order, mapping, residual rule."""
+def _pattern_report(args: argparse.Namespace, pattern: Pattern, job) -> list[str]:
+    """What the operator needs to read the board and update the calibration.
+
+    The formulas come from the pattern verbatim (they are the SAME lines as in the
+    ``.nc`` header, with the machine's numbers already substituted): translating them
+    twice would let the copy on stdout and the copy on the machine drift apart.
+    """
     if args.kind == "bars":
         widths = "  ".join(f"{width:.3f}" for width in args.widths)
         return [
             _("Bars: widths in fixed order {widths} mm, gap = width, five lines per group")
             .format(widths=widths),
-            _("Groups bottom to top: horizontal along X (Y resolution), then vertical across (X resolution)"),
+            _("Layout: horizontal groups at the bottom left (along X: Y resolution), vertical groups to their right (along Y: X resolution)"),
         ]
     if args.kind == "dose":
         lines = [_("Dose strip: {count} tiles bottom to top, each with its own power")
@@ -244,13 +249,15 @@ def _pattern_report(args: argparse.Namespace, job) -> list[str]:
                                  y1=round(level.y1_mm, 3),
                                  power=round(level.power, 4), s=level.s_value))
         return lines
-    lines = [_("Square {side} mm, line {width} mm, calibration {state}")
-             .format(side=args.side_mm, width=args.line_width_mm,
-                     state=_("applied") if args.with_calibration else _("not applied")),
-             _("Diagonals: d1 front-left to back-right, d2 front-right to back-left; theta = (d1 - d2) / (sqrt(2) * side)")]
-    if args.with_calibration:
-        lines.append(_("The measurement is a RESIDUAL: add it to the current scale_x, scale_y and skew_deg, do not replace them"))
-    return lines
+    return [
+        _("Square {side} mm, line {width} mm, calibration {state}")
+        .format(side=args.side_mm, width=args.line_width_mm,
+                state=_("applied") if args.with_calibration else _("not applied")),
+        _("Diagonals: d1 front-left to back-right, d2 front-right to back-left; theta = (d1 - d2) / (sqrt(2) * side)"),
+        _("How the measurement becomes new calibration values (the scales multiply, the angle adds):"),
+        *pattern.formulas,
+        _("Write these numbers into the calibration file"),
+    ]
 
 
 def _cmd_pattern(args: argparse.Namespace) -> int:
@@ -277,7 +284,7 @@ def _cmd_pattern(args: argparse.Namespace) -> int:
         raise JobError(_("Cannot build the pattern: {error}").format(error=bad)) from bad
     _print_warnings(built.warnings + job.warnings)
     write_gcode(job, args.output)
-    for line in _pattern_report(args, job):
+    for line in _pattern_report(args, built, job):
         print(line)
     print(_("Wrote {path}: {rows} rows, {segments} segments")
           .format(path=args.output, rows=job.inked_rows, segments=job.segment_count))
