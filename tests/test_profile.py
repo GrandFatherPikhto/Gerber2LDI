@@ -131,6 +131,11 @@ BAD_PROFILE_CELLS = [
     ("negative overscan", "overscan_mm = 5", "overscan_mm = -1", "scan.overscan_mm"),
     ("bidirectional not a bool", "bidirectional = false", 'bidirectional = "yes"',
      "scan.bidirectional"),
+    # Not implemented yet: refused with the field named, never quietly ignored —
+    # the job writer assumes X scanning in one direction.
+    ("Y scanning", 'scan_axis = "x"', 'scan_axis = "y"', "scan.scan_axis"),
+    ("two directions", "bidirectional = false", "bidirectional = true",
+     "scan.bidirectional"),
 ]
 
 

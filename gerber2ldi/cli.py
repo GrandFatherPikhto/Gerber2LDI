@@ -46,6 +46,25 @@ def _positive_mm(text: str) -> float:
     return value
 
 
+def _place(text: str) -> tuple[float, float]:
+    """argparse type: ``X,Y`` in millimetres, where the run-up start is placed."""
+    parts = text.replace(" ", "").split(",")
+    if len(parts) != 2:
+        raise argparse.ArgumentTypeError(
+            _("expected two millimetres separated by a comma, got {value}")
+            .format(value=text))
+    try:
+        x_value, y_value = float(parts[0]), float(parts[1])
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            _("expected a number, got {value}").format(value=text)) from None
+    if not (math.isfinite(x_value) and math.isfinite(y_value)):
+        raise argparse.ArgumentTypeError(
+            _("expected two millimetres separated by a comma, got {value}")
+            .format(value=text))
+    return (x_value, y_value)
+
+
 def _fraction(text: str) -> float:
     """argparse type: a power fraction in (0, 1]. The machine ceiling is checked
     later by the job, because it comes from the profile, not from the option."""
@@ -102,7 +121,7 @@ def _cmd_job(args: argparse.Namespace) -> int:
     layer = load_layer(args.gerber)
     machine = load_profile(args.profile)
     job = build_job(layer, machine, side=args.side, process=args.process,
-                    power=args.power,
+                    power=args.power, place_mm=args.place,
                     spot_compensation=not args.no_spot_compensation)
     _print_warnings(job.warnings)
     write_gcode(job, args.output)
@@ -124,7 +143,7 @@ def _cmd_preview(args: argparse.Namespace) -> int:
             machine = load_profile(args.profile)
             power = args.power if args.power is not None else machine.laser.usable_fraction
             job = build_job(layer, machine, side=args.side, process=args.process,
-                            power=power,
+                            power=power, place_mm=args.place,
                             spot_compensation=not args.no_spot_compensation)
             _print_warnings(job.warnings)
             rows, box = job.rows, job.box
@@ -147,6 +166,8 @@ def _add_job_options(parser: argparse.ArgumentParser, *, power_required: bool) -
     parser.add_argument("--power", type=_fraction,
                         required=power_required, default=None,
                         help=_("laser power as a fraction of the module"))
+    parser.add_argument("--place", type=_place, default=(0.0, 0.0),
+                        help=_("where to put the run-up start, mm as X,Y"))
     parser.add_argument("--no-spot-compensation", action="store_true",
                         help=_("work without a measured spot radius"))
 
@@ -196,6 +217,8 @@ def build_parser() -> argparse.ArgumentParser:
                          help=_("process: what the resist does"))
     preview.add_argument("--power", type=_fraction, default=None,
                          help=_("laser power as a fraction of the module"))
+    preview.add_argument("--place", type=_place, default=(0.0, 0.0),
+                         help=_("where to put the run-up start, mm as X,Y"))
     preview.add_argument("--no-spot-compensation", action="store_true",
                          help=_("work without a measured spot radius"))
     preview.set_defaults(handler=_cmd_preview)

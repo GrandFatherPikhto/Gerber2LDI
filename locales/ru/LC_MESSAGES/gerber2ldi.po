@@ -128,11 +128,20 @@ msgstr "Задание пустое: после преобразований з�
 msgid "Spot compensation disabled explicitly (--no-spot-compensation)"
 msgstr "Компенсация пятна отключена явно (--no-spot-compensation)"
 
-msgid "Figure plus run-up needs {width} mm across, the table has {table} mm"
-msgstr "Рисунок с разгоном требует {width} мм по X, стол даёт {table} мм"
+msgid "The pass runs {start} … {end} mm across, the table spans 0 … {table} mm"
+msgstr "Проход идёт {start} … {end} мм по X, стол занимает 0 … {table} мм"
 
-msgid "Figure needs {height} mm along, the table has {table} mm"
-msgstr "Рисунку нужно {height} мм по Y, стол даёт {table} мм"
+msgid "The pass runs {start} … {end} mm along, the table spans 0 … {table} mm"
+msgstr "Проход идёт {start} … {end} мм по Y, стол занимает 0 … {table} мм"
+
+msgid "Table origin {origin} is not supported yet: only {supported}"
+msgstr "Начало координат стола {origin} пока не поддерживается: только {supported}"
+
+msgid "expected two millimetres separated by a comma, got {value}"
+msgstr "ожидались два миллиметра через запятую, пришло {value}"
+
+msgid "where to put the run-up start, mm as X,Y"
+msgstr "куда поставить начало разгона, мм как X,Y"
 
 msgid "PWM period {period} mm is wider than the spot radius {radius} mm: dashes, not a line"
 msgstr "Период ШИМ {period} мм шире радиуса пятна {radius} мм: будут штрихи, а не линия"

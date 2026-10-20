@@ -290,6 +290,14 @@ def load_profile(path: str | Path) -> Machine:
     speed = _number(scan, "speed_mm_s", source, "scan", positive=True)
     overscan = _number(scan, "overscan_mm", source, "scan", non_negative=True)
     bidirectional = _boolean(scan, "bidirectional", source, "scan")
+    # Refused, not silently ignored: the job writer assumes X scanning in one
+    # direction, and quietly building a program for a different machine is worse
+    # than not building one.
+    if axis != "x":
+        _fail(source, "scan.scan_axis", "x (only X scanning is implemented)", axis)
+    if bidirectional:
+        _fail(source, "scan.bidirectional",
+              "false (two-direction scanning is not implemented)", bidirectional)
 
     calibration_file = calibration_path(source)
     calibration = load_calibration(calibration_file)
