@@ -108,22 +108,35 @@ def _bbox_of(points: Iterable[Point]) -> BBox:
     return (min(xs), min(ys), max(xs), max(ys))
 
 
-def _shape_of(prim) -> Shape | None:
-    """One gerbonara primitive → a Shape, or None when it carries no area."""
-    if type(prim).__name__ == "Rectangle":
+def _shape_of(prim, *, index: int) -> Shape:
+    """One gerbonara primitive → a Shape. Refuses loudly, never skips.
+
+    A primitive we cannot draw is MISSING COPPER, and a debug line about it is not
+    a substitute for a refusal: the board would come out with a pad erased and
+    nobody would know. So both "the library raised" and "the outline is degenerate"
+    are :class:`InputFileError`, naming the primitive kind and the OBJECT index in
+    the file so the operator can find it. Measured on Денис's board (F_Cu, B_Cu,
+    Edge_Cuts): 2699 primitives, none raises and none is degenerate — the strict
+    refusal costs nothing on real input.
+    """
+    kind = type(prim).__name__
+    if kind == "Rectangle":
         outline = _rectangle_polygon(prim)
         return Shape(polygons=(outline,), dark=bool(prim.polarity_dark),
                      bbox=_bbox_of(outline))
     try:
         arc_polygon = prim.to_arc_poly()
-    except Exception:  # noqa: BLE001 — a primitive we cannot flatten is not fatal
-        logger.debug("primitive %s has no outline, skipped", type(prim).__name__)
-        return None
-    outline = tuple((float(x), float(y))
-                    for x, y in arc_polygon.approximate_arcs(
-                        max_error=ARC_MAX_ERROR_MM).outline)
+        outline = tuple((float(x), float(y))
+                        for x, y in arc_polygon.approximate_arcs(
+                            max_error=ARC_MAX_ERROR_MM).outline)
+    except Exception as exc:  # noqa: BLE001 — the library's failure is our refusal
+        raise InputFileError(
+            _("Cannot draw {kind} of object #{index}: {error}")
+            .format(kind=kind, index=index, error=exc)) from exc
     if len(outline) < 3:
-        return None
+        raise InputFileError(
+            _("Object #{index} produced a {kind} without an outline")
+            .format(index=index, kind=kind))
     dark = (bool(getattr(prim, "polarity_dark", True))
             and bool(getattr(arc_polygon, "polarity_dark", True)))
     return Shape(polygons=(outline,), dark=dark, bbox=_bbox_of(outline))
@@ -140,9 +153,9 @@ def load_layer(path: str | Path) -> Layer:
     try:
         with quiet_library():
             gerber = GerberFile.open(str(source))
-            shapes = tuple(shape for obj in gerber.objects
-                           for prim in obj.to_primitives(unit=MM)
-                           if (shape := _shape_of(prim)) is not None)
+            shapes = tuple(_shape_of(prim, index=index)
+                           for index, obj in enumerate(gerber.objects)
+                           for prim in obj.to_primitives(unit=MM))
             (x0, y0), (x1, y1) = gerber.bounding_box(MM)
             unit = str(gerber.unit)
             aperture_count = len(list(gerber.apertures()))

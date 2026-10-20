@@ -70,3 +70,12 @@ msgstr ""
 
 msgid "expected a positive size in mm, got {value}"
 msgstr ""
+
+msgid "Cannot draw {kind} of object #{index}: {error}"
+msgstr ""
+
+msgid "Object #{index} produced a {kind} without an outline"
+msgstr ""
+
+msgid "Drill hit #{index} ({kind}) has no position or diameter"
+msgstr ""

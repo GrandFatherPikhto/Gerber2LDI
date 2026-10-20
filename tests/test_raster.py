@@ -18,8 +18,8 @@ Cells closed here:
 import numpy as np
 import pytest
 
-from gerber2ldi.raster import (iter_rows, row_count, row_segments, row_y,
-                               rows_to_image, write_tiff)
+from gerber2ldi.raster import (iter_rows, polygon_intervals, row_count,
+                               row_segments, row_y, rows_to_image, write_tiff)
 from gerber2ldi.scan import ScanRow
 from gerber2ldi.source import Shape
 
@@ -113,3 +113,47 @@ def test_rows_to_image_refuses_a_field_thinner_than_a_pixel():
         rows_to_image([], (0.0, 0.0, 0.001, 1.0), 0.01)
     with pytest.raises(ValueError, match="X step"):
         rows_to_image([], (0.0, 0.0, 1.0, 1.0), 0.0)
+
+
+DIAMOND = ((0.0, 0.0), (1.0, 1.0), (2.0, 0.0), (1.0, -1.0))
+TRIANGLE = ((0.0, 0.0), (2.0, 0.0), (1.0, 2.0))
+
+
+def test_vertex_lying_on_the_row_is_counted_once():
+    """A PASS-THROUGH vertex on the row: two crossings, so the full chord.
+
+    The diamond's left and right vertices sit exactly on y = 0. Half-open counting
+    (``y1 <= y < y2``) gives one crossing per vertex → (0, 2). A closed rule
+    (`<=` on both ends) counts each vertex twice, the pairs collapse into
+    zero-length segments and the row comes out EMPTY — this is the mutation cell.
+    """
+    assert polygon_intervals(DIAMOND, 0.0) == ((0.0, 2.0),)
+
+
+def test_apex_lying_on_the_row_gives_no_interval():
+    """A local EXTREMUM on the row: one crossing → odd → nothing to fill.
+
+    The apex is a point, so the row has no width; the row just below has a small
+    chord. NOTE, measured: this cell does NOT react to the ``<=`` mutation (the
+    crossing count stays 1) — it pins a different property, "an odd number of
+    crossings yields nothing", and is reported as such.
+    """
+    assert polygon_intervals(TRIANGLE, 2.0) == ()
+    below = polygon_intervals(TRIANGLE, 1.99)
+    assert len(below) == 1
+    # Both flanks fall at 2 mm per 1 mm, so the chord half-width is (2 - y) / 2.
+    assert below[0][1] - below[0][0] == pytest.approx(2.0 * (2.0 - 1.99) / 2.0, abs=1e-3)
+
+
+def test_vertex_on_the_machine_row_grid_keeps_the_span():
+    """The same pass-through vertex, reached through the row grid the machine uses.
+
+    With y0 = 0 and step 0.1 the row centres land on 0.05, 0.15, …, so the diamond
+    is placed with its left/right vertices exactly at 0.05: the first row passes
+    through both. This ties `row_y` and the crossing rule together.
+    """
+    diamond = ((0.0, 0.05), (1.0, 1.05), (2.0, 0.05), (1.0, -0.95))
+    shape = Shape(polygons=(diamond,), dark=True, bbox=(0.0, -0.95, 2.0, 1.05))
+    rows = list(iter_rows([shape], (0.0, 0.0, 2.0, 1.05), 0.1))
+    assert rows[0].y_mm == pytest.approx(0.05)
+    assert rows[0].segments == ((0.0, 2.0),)

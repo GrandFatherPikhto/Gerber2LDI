@@ -22,6 +22,26 @@ class Hole:
     diameter_mm: float
 
 
+def _hole_of(prim, *, index: int) -> Hole:
+    """One drill hit → a Hole. A hit without a position or a size REFUSES.
+
+    Skipping it would mean a missing hole in the alignment data — silent, and only
+    visible as a wrong board. gerbonara hands a hit over as a ``Circle`` with a
+    RADIUS, not a diameter (measured), so the diameter is ``2r``.
+    """
+    x = getattr(prim, "x", None)
+    y = getattr(prim, "y", None)
+    diameter = getattr(prim, "diameter", None)
+    if diameter is None:
+        radius = getattr(prim, "r", None)
+        diameter = None if radius is None else 2.0 * radius
+    if x is None or y is None or diameter is None:
+        raise InputFileError(
+            _("Drill hit #{index} ({kind}) has no position or diameter")
+            .format(index=index, kind=type(prim).__name__))
+    return Hole(float(x), float(y), float(diameter))
+
+
 def load_drill(path: str | Path) -> tuple[Hole, ...]:
     """Read an Excellon file. Raises :class:`InputFileError` when it cannot be read."""
     from gerbonara.excellon import ExcellonFile
@@ -34,19 +54,9 @@ def load_drill(path: str | Path) -> tuple[Hole, ...]:
     try:
         with quiet_library():
             drill = ExcellonFile.open(str(source))
-            for obj in drill.objects:
-                for prim in obj.to_primitives(unit=MM):
-                    x = getattr(prim, "x", None)
-                    y = getattr(prim, "y", None)
-                    # gerbonara turns a drill hit into a Circle, which carries a
-                    # RADIUS (`r`), not a diameter — measured, not assumed.
-                    diameter = getattr(prim, "diameter", None)
-                    if diameter is None:
-                        radius = getattr(prim, "r", None)
-                        diameter = None if radius is None else 2.0 * radius
-                    if x is None or y is None or diameter is None:
-                        continue
-                    holes.append(Hole(float(x), float(y), float(diameter)))
+            holes = [_hole_of(prim, index=index)
+                     for index, obj in enumerate(drill.objects)
+                     for prim in obj.to_primitives(unit=MM)]
     except InputFileError:
         raise
     except Exception as exc:  # noqa: BLE001 — the library's failure is our refusal

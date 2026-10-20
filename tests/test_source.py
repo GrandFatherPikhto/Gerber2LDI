@@ -209,3 +209,55 @@ def test_drill_holes_are_millimetres(tmp_path):
 def test_missing_drill_file_is_a_refusal(tmp_path):
     with pytest.raises(InputFileError, match="File not found"):
         load_drill(tmp_path / "nope.drl")
+
+
+class _RaisingPrimitive:
+    """A primitive whose outline cannot be built — the case that must NOT be skipped."""
+
+    polarity_dark = True
+
+    def to_arc_poly(self):
+        raise RuntimeError("no outline here")
+
+
+class _DegeneratePrimitive:
+    """A primitive that flattens to fewer than three points: zero area, no shape."""
+
+    polarity_dark = True
+
+    class _Polygon:
+        outline = ((0.0, 0.0), (1.0, 1.0))
+        polarity_dark = True
+
+        def approximate_arcs(self, max_error):
+            return self
+
+    def to_arc_poly(self):
+        return self._Polygon()
+
+
+def test_primitive_that_cannot_be_drawn_is_a_refusal_not_a_skip():
+    """Missing copper is loud: the message names the kind and the OBJECT number.
+
+    Silently skipping it (the first version logged at debug and moved on) means the
+    board comes out with a pad erased and nobody knows why.
+    """
+    from gerber2ldi.source.layer import _shape_of
+
+    with pytest.raises(InputFileError, match="#7"):
+        _shape_of(_RaisingPrimitive(), index=7)
+    with pytest.raises(InputFileError, match="without an outline"):
+        _shape_of(_DegeneratePrimitive(), index=3)
+
+
+class _HitWithoutPosition:
+    """A drill hit with an X but no Y and no size."""
+
+    x = 1.0
+
+
+def test_drill_hit_without_position_is_a_refusal():
+    from gerber2ldi.source.drill import _hole_of
+
+    with pytest.raises(InputFileError, match="#2"):
+        _hole_of(_HitWithoutPosition(), index=2)

@@ -70,3 +70,12 @@ msgstr "ожидалось число, пришло {value}"
 
 msgid "expected a positive size in mm, got {value}"
 msgstr "ожидался положительный размер в мм, пришло {value}"
+
+msgid "Cannot draw {kind} of object #{index}: {error}"
+msgstr "Не удалось нарисовать {kind} объекта #{index}: {error}"
+
+msgid "Object #{index} produced a {kind} without an outline"
+msgstr "Объект #{index} дал {kind} без контура"
+
+msgid "Drill hit #{index} ({kind}) has no position or diameter"
+msgstr "Отверстие #{index} ({kind}) без координат или диаметра"

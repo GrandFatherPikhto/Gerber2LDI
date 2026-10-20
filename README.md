@@ -3,9 +3,9 @@
 Laser direct imaging (LDI) of photoresist from Gerber files: a 405 nm laser
 exposes the resist line by line, switching on and off by position.
 
-Pipeline: Gerber layer → raster → per-row on/off segments → spot compensation,
-mirror, polarity, alignment → machine job (G-code for GRBL-family firmware
-first).
+Pipeline: Gerber geometry → per-row on/off segments → spot compensation, mirror,
+polarity, alignment → machine job (G-code for GRBL-family firmware first). There
+is no raster stage: a raster image would only add quantisation and memory.
 
 Status: early development, nothing usable yet.
 
