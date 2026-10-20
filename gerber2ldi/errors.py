@@ -14,3 +14,7 @@ class Gerber2LDIError(Exception):
 
 class InputFileError(Gerber2LDIError):
     """The input file cannot be read: missing, not a Gerber/Excellon, broken."""
+
+
+class ProfileError(Gerber2LDIError):
+    """The machine profile or its calibration file is wrong — with the field named."""

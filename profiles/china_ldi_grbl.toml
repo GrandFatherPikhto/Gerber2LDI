@@ -1,0 +1,43 @@
+# Gerber2LDI — machine TYPE profile, a ready-made solution (design §13.1).
+#
+# This file describes the KIND of machine and travels in git. Nothing measured on
+# MY instance belongs here: put measurements into the calibration file next to it,
+# `china_ldi_grbl.calibration.toml` (not shipped: it does not exist until I measure).
+#
+# There is NO PORT here on purpose: the profile goes between machines by Syncthing,
+# and the port is different on each one. The port is a command-line argument.
+#
+# Calibration file format (create it when the machine is measured):
+#
+#   [calibration]
+#   scale_x = 1.0            # measured: real mm per commanded mm
+#   scale_y = 1.0
+#   skew_deg = 0.0           # measured: non-perpendicularity of the axes
+#   spot_radius_um = 0.0     # measured: 0 means "not measured yet"
+#   measured = 2026-10-20    # date of the measurement
+#
+# Without that file the machine is assumed uncalibrated (scale 1, skew 0) and the
+# program says so in one line.
+
+[machine]
+name = "china-ldi"
+firmware = "grbl"            # grbl | grblhal | fluidnc
+
+[table]
+size_x_mm = 210              # измерить: какая из осей 270 — уточнить
+size_y_mm = 270
+origin = "front-left"        # front-left | front-right | back-left | back-right
+
+[laser]
+wavelength_nm = 405
+power_w = 0.0                # измерить: ОПТИЧЕСКАЯ мощность модуля, не по шильдику
+usable_fraction = 0.8        # потолок доли мощности; S выше не выдаём НИКОГДА
+s_max = 1000                 # измерить: $30 прошивки — какое S есть полная мощность
+pwm_hz = 1000                # измерить: частота ШИМ прошивки (проверка «ШИМ рисует штрихи»)
+
+[scan]
+scan_axis = "x"              # измерить: какая ось сканирует
+row_step_um = 20             # измерить
+speed_mm_s = 50              # измерить
+overscan_mm = 5              # измерить по допуску дозы (design §4.2)
+bidirectional = false        # начинаем с одной стороны (design §4.3)

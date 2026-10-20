@@ -79,3 +79,30 @@ msgstr ""
 
 msgid "Drill hit #{index} ({kind}) has no position or diameter"
 msgstr ""
+
+msgid "Profile file not found: {path}"
+msgstr ""
+
+msgid "Cannot read profile {path}: {error}"
+msgstr ""
+
+msgid "Cannot read calibration {path}: {error}"
+msgstr ""
+
+msgid "Profile {path}: [{section}] section is required"
+msgstr ""
+
+msgid "Profile {path}: [calibration] section is required"
+msgstr ""
+
+msgid "Profile {path}: {field} is required"
+msgstr ""
+
+msgid "Profile {path}: {field} must be {expectation}, got {value}"
+msgstr ""
+
+msgid "Machine is not calibrated: {path} not found; assuming scale 1 and skew 0"
+msgstr ""
+
+msgid "Spot radius not measured in {path}; compensation needs a measurement (use --no-spot-compensation to work without it)"
+msgstr ""

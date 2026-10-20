@@ -79,3 +79,30 @@ msgstr "Объект #{index} дал {kind} без контура"
 
 msgid "Drill hit #{index} ({kind}) has no position or diameter"
 msgstr "Отверстие #{index} ({kind}) без координат или диаметра"
+
+msgid "Profile file not found: {path}"
+msgstr "Файл профиля не найден: {path}"
+
+msgid "Cannot read profile {path}: {error}"
+msgstr "Не удалось прочитать профиль {path}: {error}"
+
+msgid "Cannot read calibration {path}: {error}"
+msgstr "Не удалось прочитать калибровку {path}: {error}"
+
+msgid "Profile {path}: [{section}] section is required"
+msgstr "Профиль {path}: нужна секция [{section}]"
+
+msgid "Profile {path}: [calibration] section is required"
+msgstr "Профиль {path}: нужна секция [calibration]"
+
+msgid "Profile {path}: {field} is required"
+msgstr "Профиль {path}: нужно поле {field}"
+
+msgid "Profile {path}: {field} must be {expectation}, got {value}"
+msgstr "Профиль {path}: поле {field} должно быть {expectation}, пришло {value}"
+
+msgid "Machine is not calibrated: {path} not found; assuming scale 1 and skew 0"
+msgstr "Станок не откалиброван: {path} не найден; приняты масштаб 1 и перекос 0"
+
+msgid "Spot radius not measured in {path}; compensation needs a measurement (use --no-spot-compensation to work without it)"
+msgstr "Радиус пятна не измерен в {path}; компенсация требует замера (работать без неё — --no-spot-compensation)"
