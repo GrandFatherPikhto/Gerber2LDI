@@ -19,6 +19,13 @@ gerber2ldi job layer.gbr --profile profiles/china_ldi_grbl.toml \
 gerber2ldi preview layer.nc -o layer.png    # what the machine will draw
 ```
 
+Coordinates in the program are G54 work coordinates: before the run the operator
+sets the work zero at the same table corner that `profile.table.origin` names
+(`front-left`), otherwise the "inside the table" check compares numbers to a frame
+nobody established. The calibration file holds the machine's error (`scale_x`,
+`scale_y` are real/commanded, `skew_deg` is positive when the Y axis leans towards
++X); the program divides by the scales and shifts the rows by `−y·tg(skew)`.
+
 `job` refuses rather than adjusts: a power fraction above the profile's
 `usable_fraction` ceiling, a figure that does not fit the table together with the
 run-up strip, or a mask without a measured spot radius (use

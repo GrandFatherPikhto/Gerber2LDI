@@ -87,11 +87,14 @@ def iter_rows(shapes: Iterable[Shape], box: BBox, step_y_mm: float, *,
               y_scale: float = 1.0) -> Iterator[ScanRow]:
     """Every machine row of the field, geometrically, one at a time.
 
-    ``y_scale`` maps a MACHINE height to a FIGURE height: row ``i`` sits at
-    ``y_machine`` but samples the figure at ``y_machine / y_scale`` (design §17).
-    This conversion lives here and only here — scaling the rows afterwards would
-    put compensation and skew on different axes, and the error would grow with
-    distance from the origin.
+    ``y_scale`` is the machine's Y error, ``real / commanded`` (design §17): a head
+    COMMANDED to ``y`` really sits at ``y · scale_y``, so a row commanded to
+    ``height`` must sample the figure at ``height · y_scale``. The direction matters:
+    dividing here would distort the drawing a second time instead of correcting it.
+
+    This conversion lives here and only here — scaling the rows afterwards would put
+    compensation and skew on different axes, and the error would grow with distance
+    from the origin.
     """
     if not math.isfinite(y_scale) or y_scale <= 0.0:
         raise ValueError(f"Y scale must be finite and positive, got {y_scale!r}")
@@ -99,4 +102,4 @@ def iter_rows(shapes: Iterable[Shape], box: BBox, step_y_mm: float, *,
     shapes = tuple(shapes)
     for index in range(row_count(y1 - y0, step_y_mm)):
         height = row_y(y0, index, step_y_mm)
-        yield ScanRow(height, row_segments(shapes, height / y_scale))
+        yield ScanRow(height, row_segments(shapes, height * y_scale))

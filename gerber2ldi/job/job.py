@@ -172,7 +172,7 @@ def build_job(layer: Layer, machine: Machine, *, side: str = SIDE_TOP,
 
     x_scale, y_scale = calibration.scale_x, calibration.scale_y
     x0, y0, x1, y1 = layer.bbox
-    machine_box = (x0 * x_scale, y0 * y_scale, x1 * x_scale, y1 * y_scale)
+    machine_box = (x0 / x_scale, y0 / y_scale, x1 / x_scale, y1 / y_scale)
     rows = tuple(iter_rows(layer.shapes, machine_box,
                            machine.scan.row_step_mm, y_scale=y_scale))
 
@@ -196,9 +196,13 @@ def build_job(layer: Layer, machine: Machine, *, side: str = SIDE_TOP,
         rows = tuple(compensate(rows, machine.scan.row_step_mm, radius))
 
     # 4. station calibration: X scale, then skew (after the mirror, on purpose).
-    rows = tuple(ScanRow(row.y_mm, scale(row.segments, x_scale)) for row in rows)
+    # `scale_x` is real / commanded, so what must be COMMANDED is figure / scale_x.
+    rows = tuple(ScanRow(row.y_mm, scale(row.segments, 1.0 / x_scale)) for row in rows)
     if calibration.skew_deg:
-        rows = tuple(apply_skew(rows, math.tan(math.radians(calibration.skew_deg))))
+        # The machine bends the other way: real x = commanded x + y·tg θ (θ > 0 is
+        # the real Y axis leaning towards +X, design §17 "Соглашение о знаках"), so
+        # the correction is commanded x = figure x − y·tg θ — MINUS.
+        rows = tuple(apply_skew(rows, -math.tan(math.radians(calibration.skew_deg))))
 
     # 5. placement: the run-up start and the bottom edge go to place_mm.
     overscan = machine.scan.overscan_mm

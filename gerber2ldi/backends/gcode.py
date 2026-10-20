@@ -36,6 +36,11 @@ from ..scan import ScanRow
 
 NUMBER_DECIMALS = 3
 LASER_MODE_COMMENT = "; requires GRBL laser mode $32=1"
+WORK_ZERO_COMMENT = ("; work coordinates G54: the operator sets the work zero at the "
+                     "table corner named by profile.table.origin (front-left)")
+"""Coordinates here are WORK coordinates. Without the operator setting G54 to the
+same corner the "inside the table" check means nothing — it compares numbers to a
+frame nobody established."""
 
 
 def gc_number(value: float) -> str:
@@ -48,7 +53,7 @@ def gc_number(value: float) -> str:
 
 def render_gcode(job) -> list[str]:
     """The whole program as lines — separated from writing so tests can diff it."""
-    lines = [LASER_MODE_COMMENT, "G21", "G90",
+    lines = [LASER_MODE_COMMENT, WORK_ZERO_COMMENT, "G21", "G90",
              f"F{gc_number(job.feed_mm_per_min)}"]
     for row in job.rows:
         lines.append("M5")

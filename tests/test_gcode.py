@@ -21,8 +21,8 @@ Cells:
 """
 import pytest
 
-from gerber2ldi.backends.gcode import (LASER_MODE_COMMENT, gc_number, render_gcode,
-                                       write_gcode)
+from gerber2ldi.backends.gcode import (LASER_MODE_COMMENT, WORK_ZERO_COMMENT,
+                                       gc_number, render_gcode, write_gcode)
 from gerber2ldi.job import build_job
 from gerber2ldi.source import load_layer
 
@@ -145,6 +145,13 @@ def test_header_asks_for_grbl_laser_mode(tmp_path, make_machine):
     lines = render_gcode(_job(tmp_path, make_machine))
     assert lines[0] == LASER_MODE_COMMENT
     assert "32" in lines[0] and "laser" in lines[0]
+
+
+def test_header_states_the_work_coordinate_frame(tmp_path, make_machine):
+    """Numbers are G54 work coordinates; the operator must zero the same corner."""
+    lines = render_gcode(_job(tmp_path, make_machine))
+    assert lines[1] == WORK_ZERO_COMMENT
+    assert "G54" in lines[1] and "front-left" in lines[1]
 
 
 def test_s_value_never_exceeds_the_ceiling(tmp_path, make_machine):

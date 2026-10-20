@@ -14,11 +14,18 @@
 # Calibration file format (create it when the machine is measured):
 #
 #   [calibration]
-#   scale_x = 1.0            # measured: real mm per commanded mm, within [0.95, 1.05]
+#   scale_x = 1.0            # measured: REAL mm per COMMANDED mm, within [0.95, 1.05]
 #   scale_y = 1.0            # same bounds: a belt stretch moves this by tenths of a percent
-#   skew_deg = 0.0           # measured: axis non-perpendicularity, within ±5 degrees
+#   skew_deg = 0.0           # measured on a square, within ±5 degrees. SIGN: positive
+#                            # means the real Y axis leans towards +X, i.e. the
+#                            # diagonal from the front-left corner to the back-right
+#                            # one comes out LONGER: skew ≈ (d1 − d2) / (√2 · L).
+#                            # The program corrects with a shift of −y · tg(skew).
 #   spot_radius_um = 0.0     # measured: 0 or absent means "not measured yet"
 #   measured = 2026-10-20    # date of the measurement
+#
+# The scales are REAL/COMMANDED, so the program divides by them: a feature that
+# must come out 100 mm long is commanded as 100 / scale_x.
 #
 # Without that file the machine is assumed uncalibrated (scale 1, skew 0) and the
 # program says so in one line. Without a spot radius a job is refused unless
