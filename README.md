@@ -1,102 +1,272 @@
 # Gerber2LDI
 
-Laser direct imaging (LDI) of photoresist from Gerber files: a 405 nm laser
-exposes the resist line by line, switching on and off by position.
+Laser direct imaging (LDI) of photoresist from Gerber files: a 405 nm laser exposes
+the resist line by line, switching on and off by position.
 
 Pipeline: Gerber geometry → per-row on/off segments → spot compensation, mirror,
-polarity, alignment → machine job (G-code for GRBL-family firmware first). There
-is no raster stage: a raster image would only add quantisation and memory.
+polarity, calibration → machine job (G-code for GRBL-family firmware). There is no
+raster stage: a raster image would only add quantisation and memory.
 
-Status: early development, nothing usable yet.
+Status: early development. The program builds and checks a job and writes a file; the
+job has **not been run on the machine yet** — everything marked so below is unproven.
 
 ## What works today
 
 ```sh
-gerber2ldi info layer.gbr                    # units, size, apertures, polarity
-gerber2ldi raster layer.gbr -o layer.tif    # machine rows + a preview TIFF
+gerber2ldi info layer.gbr                     # units, size, apertures, polarity
+gerber2ldi raster layer.gbr -o layer.tif      # rows + a preview TIFF for the eyes
 gerber2ldi job layer.gbr --profile profiles/china_ldi_grbl.toml \
-    --power 0.8 -o layer.nc                 # the machine program
-gerber2ldi preview layer.nc -o layer.png    # what the machine will draw
-gerber2ldi pattern bars --profile P --power 0.6 -o bars.nc      # spot and resolution
-gerber2ldi pattern dose --profile P --from 0.02 --to 0.16 --count 6 -o dose.nc
-gerber2ldi pattern square --profile P --power 0.6 -o square.nc   # skew, 150 mm
+    --power 0.6 -o layer.nc                   # the machine program
+gerber2ldi preview layer.nc -o layer.png      # what the machine will draw
+gerber2ldi pattern bars   --profile P --power 0.6 -o bars.nc
+gerber2ldi pattern dose   --profile P --from 0.02 --to 0.16 --count 6 -o dose.nc
+gerber2ldi pattern square --profile P --power 0.6 -o square.nc
 ```
 
-Coordinates in the program are G54 work coordinates: before the run the operator
-sets the work zero at the same table corner that `profile.table.origin` names
-(`front-left`), otherwise the "inside the table" check compares numbers to a frame
-nobody established. The calibration file holds the machine's error (`scale_x`,
-`scale_y` are real/commanded, `skew_deg` is positive when the Y axis leans towards
-+X); the program divides by the scales and shifts the rows by `−y·tg(skew)`.
+## What this program does not do
 
-`job` refuses rather than adjusts: a power fraction above the profile's
-`usable_fraction` ceiling, a figure that does not fit the table together with the
-run-up strip, or a mask without a measured spot radius (use
-`--no-spot-compensation` to say so out loud). Warnings — an uncalibrated machine,
-a PWM period coarser than the spot — are lines on stderr, never dialogs.
+* **It does not export Gerbers from KiCad.** Use KiCad's own command line
+  (`kicad-cli pcb export gerbers`, `kicad-cli pcb export drill`); this project reads
+  the files, it does not make them.
+* **It does not set the work zero.** G54 belongs to the operator: jog the head to the
+  table corner named by `profile.table.origin` and send `G10 L20 P1 X0 Y0` (or press
+  the sender's “zero” button).
+* **It does not talk to the machine.** No port, no streaming: it writes a file. Send
+  it with UGS, LaserGRBL or Candle.
+* **It does not calibrate itself.** The three patterns are exposed and measured by
+  you, with calipers and a microscope; the numbers go into the calibration file.
+* **It does not diagnose the process.** It refuses what it can prove is wrong; the
+  rest is the symptom table at the end.
+* **It does not make the process safe.** The screen, the goggles and the stop button
+  are on your side of the table.
 
-## Calibration patterns
+## Working with the machine
 
-`bars` draws five lines per group with a gap equal to the line width, in the order
-200, 150, 100, 80, 60, 50 µm — first horizontal (Y resolution: the spot plus the row
-step), then vertical (X resolution: the spot edges and the PWM dashes). `dose` stacks
-tiles in Y, bottom to top with rising power; the levels are either an explicit
-`--powers` list or a geometric series (`--from/--to/--count`, because dose acts
-multiplicatively), and the mapping "tile → y, power, S" is printed and written into
-the `.nc` header. A level above `usable_fraction` is a refusal, not a clamp.
+### 1. Gerbers from KiCad
 
-`square` draws an L×L contour. Measure both diagonals AND both sides with calipers:
-`d1` from the front-left corner to the back-right one, `d2` from the front-right to
-the back-left, then `theta = (d1 - d2) / (√2 · L)` with L MEASURED, not nominal.
-Without `--with-calibration` the square ignores the profile's scale and skew, so the
-measurement is absolute: `scale_x = measured X side / nominal side`, `skew_deg = theta`.
-With the flag the square is drawn through them and the command prints the update with
-the machine's numbers already substituted:
+Export copper, the board outline and the drill file:
 
-```
-scale_x_new = 1.002000 * (measured X side / 150.000 mm)
-skew_new    = 0.1000 deg + theta
+```sh
+kicad-cli pcb export gerbers board.kicad_pcb -o gerbers/
+kicad-cli pcb export drill board.kicad_pcb -o gerbers/
 ```
 
-A scale is a FACTOR, so it is multiplied; a skew is an ANGLE, so it is added — the
-same lines go into the `.nc` header, so the copy on stdout and the copy on the
-machine cannot drift.
+Then look at what arrived — `gerber2ldi info` prints units, size, aperture count,
+shape count and whether clear polarity (`%LPC*%`) is present. A size that does not
+match the board is the first thing to catch.
 
-All three run without spot compensation unless `--with-compensation` is given: the
-bars are what the spot is measured FROM, so demanding the measurement first would be
-a closed circle. A pattern is ordinary geometry (`Shape` polygons) and goes through
-the same `job` as a Gerber layer — there is no second path — which is how a strip of
-rows carries its own power; per-row power is refused together with compensation,
-because compensation adds and removes rows.
+*Not exercised in this project: the two `kicad-cli` lines are from KiCad's
+documentation, not from a run here.*
 
-Geometry comes straight from the Gerber — there is no raster stage in the
-pipeline, and the TIFF is a preview for the eyes only. Millimetres throughout,
-the X axis is not discretised (the machine decides that), and a row is taken at
-the centre of the machine pass: `y0 + (i + 0.5) · step_y`.
+### 2. Profile and calibration
 
-Known library behaviour we work around: gerbonara's `Rectangle.to_arc_poly()`
-returns the bounding box of a rotated rectangle, so rectangles are built from
-their rotation; pygerber ignores the rotation of macro primitive 5, so rotated
-polygon pads are measured against analytic geometry, not against it.
+`profiles/china_ldi_grbl.toml` is a starting point: copy it, then change the table
+size, `scan.row_step_um`, `scan.speed_mm_s`, `scan.overscan_mm`, `laser.s_max`,
+`laser.usable_fraction`. The profile describes a TYPE of machine and is in git.
 
-## Safety
+The measured error of your instance lives next to it, in
+`profiles/<name>.calibration.toml`:
 
-This program never talks to the machine: it writes a file and the operator runs it.
-Everything that can stop the laser belongs to the firmware and to the machine — hard
-limits, the emergency stop, the watchdog — because a dialog on the PC is a promise
-nobody can keep once the motion is under way (design §5.1). Two guards here are real,
-if modest: the power ceiling is a refusal, and the pass with its run-up must fit the
-table.
+```toml
+[calibration]
+scale_x = 1.002      # real / commanded
+scale_y = 0.998
+skew_deg = 0.1       # > 0: the real Y axis leans towards +X
+spot_radius_um = 150 # measured with the bars pattern
+measured = 2026-10-21
+```
 
-GRBL settings the program assumes and writes into the header:
+No calibration file — a warning, and neutral values (scale 1, skew 0) are assumed. No
+spot measurement — **a refusal** to compensate; `--no-spot-compensation` says out loud
+that you accept a wider line than drawn.
 
-* `$32=1` — laser mode. Without it `M4`/`M5` do not switch the beam and GRBL halts on
-  every `S` change;
-* `$30=s_max` — maximum spindle speed. `S` is a fraction of THIS number, so the same
-  file under another `$30` exposes another dose without a byte of it changing.
+### 3. Build the job
 
-Before the first run: set `$32` and `$30`, put the work zero where
-`profile.table.origin` says, and watch the first pass with a finger on the stop.
+```sh
+gerber2ldi job F_Cu.gbr --profile profiles/china_ldi_grbl.toml \
+    --power 0.6 -o top.nc
+gerber2ldi job B_Cu.gbr --profile profiles/china_ldi_grbl.toml \
+    --power 0.6 --side bottom --process plating-resist --place 20,30 -o bottom.nc
+```
+
+* `--side bottom` mirrors the figure: the resist is exposed from the other side.
+* `--process` is what the resist is for: `etch-resist` lights the COPPER (the resist
+  stays where the copper is), `plating-resist` lights the GAPS.
+* `--power` is a fraction of the module and above `usable_fraction` it is a refusal,
+  never a clamp.
+* `--place X,Y` puts the run-up strip start at that table point. KiCad writes negative
+  Y coordinates; the program places the figure on the table and checks the whole pass,
+  run-up included, against the table. Without `--place` the figure goes to the origin.
+
+### 4. Check before exposing
+
+```sh
+gerber2ldi preview top.nc -o top.png
+```
+
+Look at: the top of the picture is the larger Y (a top view, as in GerbView); the
+bottom side comes out mirrored; copper versus gaps follows `--process`; the proportions
+match the board. A preview from the Gerber plus a profile also works
+(`preview layer.gbr --profile … -o layer.png`) and shows the job before the file.
+
+### 5. The machine, once
+
+Two GRBL settings decide what the numbers in the file mean; both are named in its
+header, so a file is never ambiguous:
+
+* **`$32=1` — laser mode.** `M4`/`M5` switch the beam with or without it. Without
+  laser mode, though, GRBL **stops at every change of `S`**: the head decelerates, the
+  beam stays on while it waits, and every place where power changes comes out
+  over-exposed. With `$32=1` power changes on the fly.
+* **`$30` = `laser.s_max` of the profile** (1000 in the China profile). `S` is a
+  fraction of THIS number: a smaller `$30` in the firmware makes `S600` mean more than
+  the file intended, and a larger `$30` makes it mean less.
+
+Check them with `$$`, then set them: `$32=1`, `$30=1000`.
+
+*Not tested on the machine yet: the header is checked by a test, the behaviour of a
+controller with a wrong `$30` is the controller's.*
+
+### 6. Before every run
+
+Work zero G54 at the table corner that `profile.table.origin` names (`front-left`).
+Jog the head over the corner, then in the sender's console:
+
+```
+G10 L20 P1 X0 Y0
+```
+
+(or the sender's “set zero” button). The numbers in the program are work coordinates;
+the “inside the table” check compares them with a frame that has to exist. Then: the
+board flat on the vacuum table, focus set, first pass at low power.
+
+### 7. Sending
+
+A ready `.nc` file, sent by a program made for GRBL: **UGS** (Universal Gcode Sender),
+**LaserGRBL** or **Candle**. What matters:
+
+* streaming send with “character counting” (the sender keeps a few lines ahead), not
+  a line-by-line send with a wait after each;
+* no transformations inside the sender — no scaling, no offset, no “optimisation”, no
+  reordering: it is a file of coordinates, not a picture.
+
+*Not tested on the machine: none of the three senders has been used with this program
+yet. `gerber2ldi` itself never opens the port.*
+
+### 8. Safety
+
+The laser is 405 nm — visible violet, and the eye focuses it on the retina.
+
+* **Screen** of orange acrylic for 405 nm around the working area, or **goggles** with
+  a stated optical density at 405 nm (OD4+). Choose by the MARKING (the range must
+  include 405 nm and the OD must be stated), never by the colour of the lens.
+* **Ordinary glasses do not protect**: glass passes 405 nm; “safety glasses” from a
+  hardware shop say nothing about this wavelength.
+* First passes at low power; a test exposure on a scrap board before a real one.
+* **Stop** with the machine's button or the sender's reset (`Ctrl-X` / reset) — not by
+  closing the window of the program.
+* Never leave the laser on while the head is not moving.
+
+*Not tested here: the choice of screen and goggles is the operator's; the program
+neither sees nor controls them.*
+
+The program's own guards are modest and real: the power ceiling is a refusal, and the
+pass with its run-up must fit the table. Everything that can stop the beam — hard
+limits, the emergency stop, the watchdog — is in the firmware and on the machine,
+because a dialog on the PC is a promise nobody can keep while the motion is under way.
+
+### 9. Calibration, step by step
+
+1. `pattern bars --profile … --power 0.6 -o bars.nc` — expose and develop. The
+   smallest group whose lines and gaps survived gives the spot: `spot_radius_um` ≈ half
+   of the narrowest resolved width (an upper estimate; the compensation erodes the
+   figure by that radius).
+2. `pattern dose --profile … --from 0.02 --to 0.16 --count 6 -o dose.nc` — expose and
+   develop; the tile that looks right gives `--power` for the boards. The mapping
+   “tile, bottom to top → y, power, S” is printed and written into the header.
+3. `pattern square --profile … --power 0.6 -o square.nc` — expose, then measure both
+   diagonals and both sides with calipers. `d1` runs from the front-left corner to the
+   back-right one, `d2` from the front-right to the back-left, and
+   `theta = (d1 - d2) / (√2 · L)` with `L` measured, not nominal. The command prints
+   the formulas with your current numbers in place:
+   `scale_x = measured X side / 150.000 mm`, `skew_deg = theta`.
+4. Write them into `profiles/<name>.calibration.toml` with `measured = YYYY-MM-DD`.
+5. Check: `pattern square … --with-calibration` draws the square THROUGH the
+   calibration and prints `scale_x_new = 1.002000 * (measured X side / 150.000 mm)`,
+   `skew_new = 0.1000 deg + theta`. A scale is a factor, so it is multiplied; a skew is
+   an angle, so it is added.
+
+The square ignores the profile's scale and skew unless `--with-calibration` is given:
+it measures them, and measuring a value through itself gives a residual, not a value.
+All three patterns run without spot compensation unless `--with-compensation` is given,
+because the bars are what the spot is measured FROM.
+
+### 10. If something is wrong
+
+| symptom | likely cause | what to do |
+|---|---|---|
+| edges and power changes over-exposed, “steps” along a line | no laser mode: GRBL stops at every `S` change | `$32=1` |
+| power has little effect, everything too weak or too strong | `$30` ≠ `laser.s_max` | set `$30` to the profile's `s_max` |
+| the wrong side came out | `--side` | `top` for the side you draw first, `bottom` for the mirrored one |
+| the figure sits on the table edge or outside it | work zero not set, or no `--place` | `G10 L20 P1 X0 Y0` at `front-left`, or `--place X,Y` |
+| tracks thicker than drawn, gaps closed | no compensation, or a wrong `spot_radius_um` | measure again with `bars`, set the radius |
+| the two sides do not line up | wrong sign of `skew_deg`, or a wrong scale | `pattern square --with-calibration`, use the printed formulas |
+| nothing is exposed at all | an old program without `M4` after `G0` | regenerate the file; check the pattern below |
+
+A correct pass looks like this (the first lines of any `.nc`):
+
+```
+M5
+G0 X0 Y0
+M4 S0
+G1 X5.09 S0
+G1 X80.821 S600
+```
+
+## How to read the .nc header
+
+```
+; requires GRBL laser mode $32=1
+; work coordinates G54: the operator sets the work zero at the table corner named by profile.table.origin (front-left)
+; spot compensation: off
+; calibration in force: scale_x=1.002000 scale_y=0.998000 skew=0.1000 deg
+; GRBL: $32=1 (laser mode), $30=1000 (max spindle speed: the power word is a fraction of it)
+```
+
+* the first two lines say what the file assumes: laser mode, and a work zero at a
+  named corner;
+* `spot compensation` — whether the figure was narrowed by the spot radius;
+* `calibration in force` — the scale and skew actually applied (they are NOT the file's
+  values when a pattern deliberately drew without them);
+* the `GRBL` line repeats both settings with the profile's `s_max`, so the file carries
+  the frame its `S` words are read in;
+* a pattern adds its own lines: what it draws, how to measure it, whether the
+  calibration was applied, and the formulas for the calibration file.
+
+## Coordinates and refusals
+
+Coordinates in the program are G54 work coordinates: the “inside the table” check is
+only as true as the zero the operator set. The calibration file holds the machine's
+error (`scale_x`, `scale_y` are real/commanded, `skew_deg` is positive when the Y axis
+leans towards +X); the program divides by the scales and shifts every row by
+`−y·tg(skew)`.
+
+`job` refuses rather than adjusts: a power above the ceiling, a figure that does not
+fit the table with its run-up, a spot not measured without `--no-spot-compensation`, an
+unknown table origin, a scan axis other than X. Warnings — an uncalibrated machine, a
+PWM period coarser than the spot — are lines on stderr, never dialogs.
+
+Geometry comes straight from the Gerber — there is no raster stage in the pipeline, and
+the TIFF is a preview for the eyes only. Millimetres throughout, the X axis is not
+discretised (the machine decides that), and a row is taken at the centre of the machine
+pass: `y0 + (i + 0.5) · step_y`.
+
+## Known library behaviour we work around
+
+gerbonara's `Rectangle.to_arc_poly()` returns the bounding box of a rotated rectangle,
+so rectangles are built from their rotation; pygerber ignores the rotation of macro
+primitive 5, so rotated polygon pads are measured against analytic geometry, not
+against it.
 
 ## Install (development)
 
