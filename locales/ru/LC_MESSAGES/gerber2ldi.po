@@ -106,3 +106,75 @@ msgstr "Станок не откалиброван: {path} не найден; п
 
 msgid "Spot radius not measured in {path}; compensation needs a measurement (use --no-spot-compensation to work without it)"
 msgstr "Радиус пятна не измерен в {path}; компенсация требует замера (работать без неё — --no-spot-compensation)"
+
+msgid "Unknown {field} {value} (one of {allowed})"
+msgstr "Неизвестное {field}: {value} (одно из {allowed})"
+
+msgid "side"
+msgstr "сторона"
+
+msgid "process"
+msgstr "процесс"
+
+msgid "Requested power {requested} must be a fraction above zero"
+msgstr "Запрошенная мощность {requested} должна быть долей больше нуля"
+
+msgid "Requested power {requested} is above the ceiling {ceiling} from {path}"
+msgstr "Запрошенная мощность {requested} выше потолка {ceiling} из {path}"
+
+msgid "The job is empty: nothing to expose after the transforms"
+msgstr "Задание пустое: после преобразований засвечивать нечего"
+
+msgid "Spot compensation disabled explicitly (--no-spot-compensation)"
+msgstr "Компенсация пятна отключена явно (--no-spot-compensation)"
+
+msgid "Figure plus run-up needs {width} mm across, the table has {table} mm"
+msgstr "Рисунок с разгоном требует {width} мм по X, стол даёт {table} мм"
+
+msgid "Figure needs {height} mm along, the table has {table} mm"
+msgstr "Рисунку нужно {height} мм по Y, стол даёт {table} мм"
+
+msgid "PWM period {period} mm is wider than the spot radius {radius} mm: dashes, not a line"
+msgstr "Период ШИМ {period} мм шире радиуса пятна {radius} мм: будут штрихи, а не линия"
+
+msgid "expected a fraction in (0, 1], got {value}"
+msgstr "ожидалась доля в (0, 1], пришло {value}"
+
+msgid "machine profile (TOML)"
+msgstr "профиль станка (TOML)"
+
+msgid "side of the board"
+msgstr "сторона платы"
+
+msgid "process: what the resist does"
+msgstr "процесс: что делает резист"
+
+msgid "laser power as a fraction of the module"
+msgstr "мощность лазера долей от модуля"
+
+msgid "work without a measured spot radius"
+msgstr "работать без измеренного радиуса пятна"
+
+msgid "make a machine job"
+msgstr "собрать задание для станка"
+
+msgid "output G-code"
+msgstr "выходной G-code"
+
+msgid "draw what the machine will do"
+msgstr "нарисовать, что сделает станок"
+
+msgid "input Gerber or G-code"
+msgstr "входной гербер или G-code"
+
+msgid "output PNG"
+msgstr "выходной PNG"
+
+msgid "Wrote {path}: {rows} rows, {segments} segments, S{s}"
+msgstr "Записано {path}: строк {rows}, отрезков {segments}, S{s}"
+
+msgid "Wrote {path}"
+msgstr "Записано {path}"
+
+msgid "Preview without a profile: no calibration and no compensation applied"
+msgstr "Превью без профиля: калибровка и компенсация не применены"

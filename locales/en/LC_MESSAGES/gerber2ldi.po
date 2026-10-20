@@ -106,3 +106,75 @@ msgstr ""
 
 msgid "Spot radius not measured in {path}; compensation needs a measurement (use --no-spot-compensation to work without it)"
 msgstr ""
+
+msgid "Unknown {field} {value} (one of {allowed})"
+msgstr ""
+
+msgid "side"
+msgstr ""
+
+msgid "process"
+msgstr ""
+
+msgid "Requested power {requested} must be a fraction above zero"
+msgstr ""
+
+msgid "Requested power {requested} is above the ceiling {ceiling} from {path}"
+msgstr ""
+
+msgid "The job is empty: nothing to expose after the transforms"
+msgstr ""
+
+msgid "Spot compensation disabled explicitly (--no-spot-compensation)"
+msgstr ""
+
+msgid "Figure plus run-up needs {width} mm across, the table has {table} mm"
+msgstr ""
+
+msgid "Figure needs {height} mm along, the table has {table} mm"
+msgstr ""
+
+msgid "PWM period {period} mm is wider than the spot radius {radius} mm: dashes, not a line"
+msgstr ""
+
+msgid "expected a fraction in (0, 1], got {value}"
+msgstr ""
+
+msgid "machine profile (TOML)"
+msgstr ""
+
+msgid "side of the board"
+msgstr ""
+
+msgid "process: what the resist does"
+msgstr ""
+
+msgid "laser power as a fraction of the module"
+msgstr ""
+
+msgid "work without a measured spot radius"
+msgstr ""
+
+msgid "make a machine job"
+msgstr ""
+
+msgid "output G-code"
+msgstr ""
+
+msgid "draw what the machine will do"
+msgstr ""
+
+msgid "input Gerber or G-code"
+msgstr ""
+
+msgid "output PNG"
+msgstr ""
+
+msgid "Wrote {path}: {rows} rows, {segments} segments, S{s}"
+msgstr ""
+
+msgid "Wrote {path}"
+msgstr ""
+
+msgid "Preview without a profile: no calibration and no compensation applied"
+msgstr ""

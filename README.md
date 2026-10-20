@@ -12,9 +12,18 @@ Status: early development, nothing usable yet.
 ## What works today
 
 ```sh
-gerber2ldi info layer.gbr                  # units, size, apertures, polarity
-gerber2ldi raster layer.gbr -o layer.tif  # machine rows + a preview TIFF
+gerber2ldi info layer.gbr                    # units, size, apertures, polarity
+gerber2ldi raster layer.gbr -o layer.tif    # machine rows + a preview TIFF
+gerber2ldi job layer.gbr --profile profiles/china_ldi_grbl.toml \
+    --power 0.8 -o layer.nc                 # the machine program
+gerber2ldi preview layer.nc -o layer.png    # what the machine will draw
 ```
+
+`job` refuses rather than adjusts: a power fraction above the profile's
+`usable_fraction` ceiling, a figure that does not fit the table together with the
+run-up strip, or a mask without a measured spot radius (use
+`--no-spot-compensation` to say so out loud). Warnings — an uncalibrated machine,
+a PWM period coarser than the spot — are lines on stderr, never dialogs.
 
 Geometry comes straight from the Gerber — there is no raster stage in the
 pipeline, and the TIFF is a preview for the eyes only. Millimetres throughout,

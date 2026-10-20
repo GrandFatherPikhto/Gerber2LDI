@@ -90,3 +90,52 @@ def test_raster_refuses_a_non_positive_step(tmp_path, flag):
     with pytest.raises(SystemExit) as exc:
         main(["raster", str(path), "-o", str(tmp_path / "p.tif"), flag, "0"])
     assert exc.value.code == 2
+
+
+def _machine_files(tmp_path, profile_text, calibration_text):
+    profile = tmp_path / "machine.toml"
+    profile.write_text(profile_text)
+    (tmp_path / "machine.calibration.toml").write_text(calibration_text)
+    return profile
+
+
+def test_job_writes_the_program(tmp_path, capsys, profile_text, calibration_text):
+    path = tmp_path / "rect.gbr"
+    path.write_text(RECT_GERBER)
+    profile = _machine_files(tmp_path, profile_text, calibration_text)
+    target = tmp_path / "layer.nc"
+    code = main(["job", str(path), "--profile", str(profile),
+                 "--power", "0.5", "-o", str(target)])
+    assert code == 0
+    assert target.is_file()
+    out = capsys.readouterr().out
+    assert "Wrote" in out and "S500" in out
+
+
+def test_job_refuses_power_above_the_ceiling(tmp_path, capsys, profile_text,
+                                             calibration_text):
+    """A refusal is one line on stderr, exit 2, and no half-written program."""
+    path = tmp_path / "rect.gbr"
+    path.write_text(RECT_GERBER)
+    profile = _machine_files(tmp_path, profile_text, calibration_text)
+    target = tmp_path / "layer.nc"
+    assert main(["job", str(path), "--profile", str(profile),
+                 "--power", "0.9", "-o", str(target)]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "above the ceiling" in captured.err
+    assert not target.exists()
+
+
+def test_preview_draws_the_program_back(tmp_path, capsys, profile_text,
+                                        calibration_text):
+    path = tmp_path / "rect.gbr"
+    path.write_text(RECT_GERBER)
+    profile = _machine_files(tmp_path, profile_text, calibration_text)
+    program = tmp_path / "layer.nc"
+    assert main(["job", str(path), "--profile", str(profile), "--power", "0.5",
+                 "-o", str(program)]) == 0
+    picture = tmp_path / "preview.png"
+    assert main(["preview", str(program), "-o", str(picture)]) == 0
+    assert picture.is_file()
+    assert "Wrote" in capsys.readouterr().out

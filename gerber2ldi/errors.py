@@ -18,3 +18,7 @@ class InputFileError(Gerber2LDIError):
 
 class ProfileError(Gerber2LDIError):
     """The machine profile or its calibration file is wrong — with the field named."""
+
+
+class JobError(Gerber2LDIError):
+    """The job cannot be built as asked: power above the ceiling, does not fit, etc."""

@@ -7,19 +7,25 @@ decided here.
 
 Expected refusals (`Gerber2LDIError`) are printed as ONE line and return a
 non-zero code, with no traceback: a missing file is an answer, not a crash.
+Warnings are lines on stderr — never dialogs (rules: claude.md п.32).
 """
 import argparse
 import math
 import sys
 from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
 
+from .backends.gcode import read_segments, write_gcode
 from .errors import Gerber2LDIError
 from .i18n import _, setup_i18n
+from .job import PROCESSES, SIDES, SIDE_TOP, PROCESS_ETCH, build_job, ink_box, load_profile
+from .preview import write_preview
 from .raster import iter_rows, write_tiff
 from .source import load_layer
 
 EXIT_OK = 0
 EXIT_REFUSED = 2
+PREVIEW_ROW_STEP_MM = 0.02
 
 
 def _positive_mm(text: str) -> float:
@@ -40,11 +46,30 @@ def _positive_mm(text: str) -> float:
     return value
 
 
+def _fraction(text: str) -> float:
+    """argparse type: a power fraction in (0, 1]. The machine ceiling is checked
+    later by the job, because it comes from the profile, not from the option."""
+    try:
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            _("expected a number, got {value}").format(value=text)) from None
+    if not math.isfinite(value) or not 0.0 < value <= 1.0:
+        raise argparse.ArgumentTypeError(
+            _("expected a fraction in (0, 1], got {value}").format(value=text))
+    return value
+
+
 def _version() -> str:
     try:
         return version("gerber2ldi")
     except PackageNotFoundError:
         return "unknown (not installed)"
+
+
+def _print_warnings(lines) -> None:
+    for line in lines:
+        print(line, file=sys.stderr)
 
 
 def _cmd_info(args: argparse.Namespace) -> int:
@@ -72,6 +97,60 @@ def _cmd_raster(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _cmd_job(args: argparse.Namespace) -> int:
+    """Build the job for the machine and write the G-code."""
+    layer = load_layer(args.gerber)
+    machine = load_profile(args.profile)
+    job = build_job(layer, machine, side=args.side, process=args.process,
+                    power=args.power,
+                    spot_compensation=not args.no_spot_compensation)
+    _print_warnings(job.warnings)
+    write_gcode(job, args.output)
+    print(_("Wrote {path}: {rows} rows, {segments} segments, S{s}")
+          .format(path=args.output, rows=job.inked_rows,
+                  segments=job.segment_count, s=job.s_value))
+    return EXIT_OK
+
+
+def _cmd_preview(args: argparse.Namespace) -> int:
+    """Draw what the machine will do: from the G-code, or from a layer + profile."""
+    source = Path(args.input)
+    if source.suffix.lower() in (".nc", ".gcode"):
+        rows = read_segments(source)
+        box = ink_box(rows)
+    else:
+        layer = load_layer(source)
+        if args.profile:
+            machine = load_profile(args.profile)
+            power = args.power if args.power is not None else machine.laser.usable_fraction
+            job = build_job(layer, machine, side=args.side, process=args.process,
+                            power=power,
+                            spot_compensation=not args.no_spot_compensation)
+            _print_warnings(job.warnings)
+            rows, box = job.rows, job.box
+        else:
+            print(_("Preview without a profile: no calibration and no compensation applied"),
+                  file=sys.stderr)
+            rows = tuple(iter_rows(layer.shapes, layer.bbox, PREVIEW_ROW_STEP_MM))
+            box = layer.bbox
+    write_preview(args.output, rows, box)
+    print(_("Wrote {path}").format(path=args.output))
+    return EXIT_OK
+
+
+def _add_job_options(parser: argparse.ArgumentParser, *, power_required: bool) -> None:
+    parser.add_argument("--profile", required=True, help=_("machine profile (TOML)"))
+    parser.add_argument("--side", choices=SIDES, default=SIDE_TOP,
+                        help=_("side of the board"))
+    parser.add_argument("--process", choices=PROCESSES, default=PROCESS_ETCH,
+                        help=_("process: what the resist does"))
+    parser.add_argument("--power", type=_fraction,
+                        required=power_required, default=None,
+                        help=_("laser power as a fraction of the module"))
+    parser.add_argument("--no-spot-compensation", action="store_true",
+                        help=_("work without a measured spot radius"))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="gerber2ldi",
@@ -96,6 +175,30 @@ def build_parser() -> argparse.ArgumentParser:
     raster.add_argument("--step-y-mm", type=_positive_mm, default=0.02,
                         help=_("machine row step, mm"))
     raster.set_defaults(handler=_cmd_raster)
+
+    job = subparsers.add_parser(
+        "job", help=_("make a machine job"),
+        description=_("make a machine job"))
+    job.add_argument("gerber", help=_("Gerber file"))
+    _add_job_options(job, power_required=True)
+    job.add_argument("-o", "--output", required=True, help=_("output G-code"))
+    job.set_defaults(handler=_cmd_job)
+
+    preview = subparsers.add_parser(
+        "preview", help=_("draw what the machine will do"),
+        description=_("draw what the machine will do"))
+    preview.add_argument("input", help=_("input Gerber or G-code"))
+    preview.add_argument("-o", "--output", required=True, help=_("output PNG"))
+    preview.add_argument("--profile", default=None, help=_("machine profile (TOML)"))
+    preview.add_argument("--side", choices=SIDES, default=SIDE_TOP,
+                         help=_("side of the board"))
+    preview.add_argument("--process", choices=PROCESSES, default=PROCESS_ETCH,
+                         help=_("process: what the resist does"))
+    preview.add_argument("--power", type=_fraction, default=None,
+                         help=_("laser power as a fraction of the module"))
+    preview.add_argument("--no-spot-compensation", action="store_true",
+                         help=_("work without a measured spot radius"))
+    preview.set_defaults(handler=_cmd_preview)
     return parser
 
 
