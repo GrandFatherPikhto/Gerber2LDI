@@ -90,7 +90,10 @@ def compensate(rows: Iterable[ScanRow], step_y_mm: float,
     if not math.isfinite(radius_mm) or radius_mm < 0.0:
         raise ValueError(f"spot radius must be finite and non-negative, got {radius_mm!r}")
 
-    half_window = int(math.floor(radius_mm / step_y_mm + GRID_TOLERANCE_MM))
+    # Tolerance goes with the RADIUS, not with the ratio: `floor(r/step + tol)`
+    # added a length to a plain number, and float dust in the ratio then dropped
+    # the row at |dy| = r (0.15 / 0.05 computes as 2.9999999999999996).
+    half_window = int(math.floor((radius_mm + GRID_TOLERANCE_MM) / step_y_mm))
     # Shrink amount per offset in rows; built once, not per row.
     shrinks = [math.sqrt(max(0.0, radius_mm * radius_mm - (j * step_y_mm) ** 2))
                for j in range(-half_window, half_window + 1)]

@@ -43,6 +43,9 @@ dev = [
     "pytest-timeout==2.4.0",
     # `-n auto` on the command line, NOT in addopts (rules: claude.md п.32).
     "pytest-xdist==3.8.0",
+    # Second acceptance leg: `--reverse-order` (rules: deepseek.md п.15). Without
+    # it the leg silently does not exist on a machine that never installed it.
+    "pytest-reverse==1.9.0",
     "babel==2.18.0",
     "pyflakes==4.0.3",
 ]

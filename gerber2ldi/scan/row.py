@@ -27,13 +27,21 @@ Segment = tuple[float, float]
 
 
 def normalize(segments: Iterable[Segment]) -> tuple[Segment, ...]:
-    """Sort, merge touching/overlapping, drop zero-length; reject reversed.
+    """Sort, merge touching/overlapping, drop zero-length; reject reversed/non-finite.
 
     The single owner of the row invariant: every operation in this package
     returns its result through this function (map: "нормализация строки отрезков").
     """
     prepared: list[Segment] = []
     for x0, x1 in segments:
+        if not (math.isfinite(x0) and math.isfinite(x1)):
+            # NaN compares False with everything, so a NaN would sail through the
+            # "reversed" test, merge into a neighbour and reach the G-code as
+            # `X nan`. Infinity would produce an unbounded segment. Both are
+            # broken geometry from upstream, so both raise like a reversed one.
+            raise ValueError(
+                f"non-finite segment coordinate ({x0!r}, {x1!r}): the geometry "
+                f"upstream is broken, not the data to be clipped")
         if x1 < x0:
             raise ValueError(
                 f"reversed segment ({x0!r}, {x1!r}): a transformation is wrong, "

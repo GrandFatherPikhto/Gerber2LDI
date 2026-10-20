@@ -102,6 +102,20 @@ def test_radius_wider_than_the_track_leaves_nothing():
     assert all(row.is_empty for row in out)
 
 
+def test_row_at_exactly_the_radius_is_in_the_window():
+    """r = 3 · step: the row at |dy| = r narrows by sqrt(r² - r²) = 0 and still counts.
+
+    The strip is 0.2 mm tall and r = 0.15 mm = 3 · 0.05, so the rows at dy = ±0.15
+    lie outside the figure and the erosion must be empty. A window one row short
+    (0.15 / 0.05 computes as 2.9999999999999996, and rounding the RATIO instead of
+    the RADIUS loses the third row) would keep the strip alive — this cell is
+    exactly that difference.
+    """
+    rows = _strip_rows(0.1, 0.5, extent=0.5)
+    out = list(compensate(rows, STEP_MM, 0.15))
+    assert all(row.is_empty for row in out)
+
+
 def test_radius_below_the_row_step_uses_a_single_row_window():
     """r < step means ±0 rows; the narrowing must still be r on each side."""
     rows = _strip_rows(1.0, 0.5, extent=0.5)

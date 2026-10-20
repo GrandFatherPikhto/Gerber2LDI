@@ -53,6 +53,29 @@ def test_normalize_reversed_segment_raises():
         normalize(((2.0, 1.0),))
 
 
+NON_FINITE_CELLS = [
+    ((math.nan, 1.0),),
+    ((0.0, math.nan),),
+    ((math.inf, 1.0),),
+    ((0.0, -math.inf),),
+]
+
+
+@pytest.mark.parametrize("segments", NON_FINITE_CELLS,
+                         ids=["nan x0", "nan x1", "+inf x0", "-inf x1"])
+def test_normalize_rejects_non_finite_coordinates(segments):
+    """NaN compares False with everything, so it would MERGE into a neighbour and
+    reach the G-code as `X nan`; infinity would make the segment unbounded."""
+    with pytest.raises(ValueError, match="non-finite"):
+        normalize(segments)
+
+
+def test_scan_row_rejects_non_finite_segments():
+    """The type refuses it too — a caller cannot smuggle NaN in through ScanRow."""
+    with pytest.raises(ValueError, match="non-finite"):
+        ScanRow(0.0, ((1.0, math.nan),))
+
+
 def test_normalize_is_idempotent():
     """Applying it to its own output changes nothing — every op relies on this."""
     once = normalize(((5.0, 6.0), (0.0, 1.0), (0.5, 1.5), (3.0, 3.0)))
