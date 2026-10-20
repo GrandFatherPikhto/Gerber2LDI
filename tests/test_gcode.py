@@ -140,6 +140,19 @@ def test_feed_is_millimetres_per_minute(tmp_path, make_machine):
     assert "F50" not in lines
 
 
+def test_header_names_the_settings_that_give_s_its_meaning(tmp_path, make_machine):
+    """`S` is a fraction of `$30`: the setting travels with the program.
+
+    The first program named only `$32=1`. The same file under another `$30` exposes a
+    different dose without a byte changing, so the profile's `s_max` must be in the
+    header next to the laser mode.
+    """
+    job = _job(tmp_path, make_machine)
+    text = "\n".join(render_gcode(job))
+    assert "$32=1" in text
+    assert "$30=1000" in text, "s_max from the profile"
+
+
 def test_header_asks_for_grbl_laser_mode(tmp_path, make_machine):
     """Without $32=1 GRBL stops on every S change and the edges come out stepped."""
     lines = render_gcode(_job(tmp_path, make_machine))
@@ -158,7 +171,10 @@ def test_s_value_never_exceeds_the_ceiling(tmp_path, make_machine):
     machine = make_machine()
     ceiling = int(machine.laser.usable_fraction * machine.laser.s_max)
     job = build_job(_layer(tmp_path), machine, power=0.8, spot_compensation=False)
+    # Power words live on motion and laser commands; header notes are prose and must
+    # not be scanned for them (they talk ABOUT S, they do not set it).
     powers = {int(word[1:]) for line in render_gcode(job)
+              if line.startswith(("G1", "M4"))
               for word in line.split() if word.startswith("S") and word != "S0"}
     assert powers == {ceiling} == {job.s_value}
 

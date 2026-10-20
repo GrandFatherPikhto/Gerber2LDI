@@ -374,6 +374,12 @@ def build_job(layer: Layer, machine: Machine, *, side: str = SIDE_TOP,
     header.append(_compensation_note(radius))
     header.append(f"calibration in force: scale_x={x_scale:.6f} "
                   f"scale_y={y_scale:.6f} skew={calibration.skew_deg:.4f} deg")
+    # The power word is a FRACTION of $30, so the controller setting is part of the
+    # program's meaning: the same file with another $30 exposes another dose. The note
+    # avoids a bare "S" so that a parser looking for power words cannot trip on it.
+    header.append(f"GRBL: $32=1 (laser mode), "
+                  f"$30={machine.laser.s_max:.0f} "
+                  f"(max spindle speed: the power word is a fraction of it)")
     for index, dose in enumerate(doses, start=1):
         header.append(f"dose {index}/{len(doses)}: y {dose.y0_mm:.3f}-{dose.y1_mm:.3f} mm "
                       f"(figure), power {dose.power:.4f}, S {dose.s_value}")

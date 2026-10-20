@@ -79,6 +79,25 @@ returns the bounding box of a rotated rectangle, so rectangles are built from
 their rotation; pygerber ignores the rotation of macro primitive 5, so rotated
 polygon pads are measured against analytic geometry, not against it.
 
+## Safety
+
+This program never talks to the machine: it writes a file and the operator runs it.
+Everything that can stop the laser belongs to the firmware and to the machine — hard
+limits, the emergency stop, the watchdog — because a dialog on the PC is a promise
+nobody can keep once the motion is under way (design §5.1). Two guards here are real,
+if modest: the power ceiling is a refusal, and the pass with its run-up must fit the
+table.
+
+GRBL settings the program assumes and writes into the header:
+
+* `$32=1` — laser mode. Without it `M4`/`M5` do not switch the beam and GRBL halts on
+  every `S` change;
+* `$30=s_max` — maximum spindle speed. `S` is a fraction of THIS number, so the same
+  file under another `$30` exposes another dose without a byte of it changing.
+
+Before the first run: set `$32` and `$30`, put the work zero where
+`profile.table.origin` says, and watch the first pass with a finger on the stop.
+
 ## Install (development)
 
 ```sh
