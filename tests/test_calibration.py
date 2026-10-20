@@ -92,7 +92,10 @@ def test_drawing_lands_where_the_figure_is(tmp_path, make_machine,
         f"skew_deg = {skew}\n"
         "measured = 2026-10-20\n"))
     layer = _layer(tmp_path)
-    job = build_job(layer, machine, power=0.5, spot_compensation=False, side=side)
+    # The layer is its own outline: the cell checks that the calibration removes the
+    # distortion, not how two sides are aligned (tests/test_frame.py holds that).
+    job = build_job(layer, machine, power=0.5, spot_compensation=False, side=side,
+                    frame=layer)
     drawn = _drawn_rows(job, machine.calibration)
     assert drawn, "the job drew nothing"
 

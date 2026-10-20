@@ -15,6 +15,10 @@ POLYGON_GERBER = (HEADER + "%AMHex*\n5,1,6,0,0,2.0,0*\n%\n%ADD10Hex*%\n%LPD*%\n"
 RECT_GERBER = (HEADER + "%ADD10R,10.0X2.0*%\n%LPD*%\nG01*\nD10*\n"
                "X5000000Y1000000D03*\n" + FOOTER)
 
+# Board outline around the strip: only its bounding box is used.
+FRAME_GERBER = (HEADER + "%ADD10R,40.0X30.0*%\n%LPD*%\nG01*\nD10*\n"
+                "X20000000Y15000000D03*\n" + FOOTER)
+
 
 @pytest.fixture(autouse=True)
 def _english(monkeypatch):
@@ -110,6 +114,27 @@ def test_job_writes_the_program(tmp_path, capsys, profile_text, calibration_text
     assert target.is_file()
     out = capsys.readouterr().out
     assert "Wrote" in out and "S500" in out
+
+
+def test_job_places_both_sides_on_the_board_outline(tmp_path, capsys, profile_text,
+                                                    calibration_text):
+    """`--frame` is the rectangle both sides are mirrored and placed by (plan Ш7)."""
+    path = tmp_path / "rect.gbr"
+    path.write_text(RECT_GERBER)
+    frame = tmp_path / "Edge_Cuts.gbr"
+    frame.write_text(FRAME_GERBER)
+    profile = _machine_files(tmp_path, profile_text, calibration_text)
+    target = tmp_path / "layer.nc"
+    assert main(["job", str(path), "--profile", str(profile), "--power", "0.5",
+                 "--frame", str(frame), "-o", str(target)]) == 0
+    assert "frame: x " in target.read_text()
+    capsys.readouterr()
+    # The bottom side needs the same outline: without it — one line, exit 2.
+    assert main(["job", str(path), "--profile", str(profile), "--power", "0.5",
+                 "--side", "bottom", "-o", str(target)]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "common frame" in captured.err
 
 
 def test_job_refuses_power_above_the_ceiling(tmp_path, capsys, profile_text,

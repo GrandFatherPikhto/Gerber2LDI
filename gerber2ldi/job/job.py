@@ -93,6 +93,8 @@ class Job:
 
     ``s_values`` is the power PER ROW, empty for a uniform job where ``s_value``
     covers every row. :attr:`row_s_values` gives the writer one shape for both cases.
+    ``frame_box`` is the board outline in machine coordinates when the caller passed
+    one — the thing both sides are mirrored and placed by.
     """
 
     rows: tuple[ScanRow, ...]
@@ -108,6 +110,7 @@ class Job:
     s_values: tuple[int, ...] = ()
     doses: tuple[Dose, ...] = ()
     notes: tuple[str, ...] = ()
+    frame_box: Box | None = None
 
     def __post_init__(self) -> None:
         if self.s_values and len(self.s_values) != len(self.rows):
@@ -221,6 +224,26 @@ def _compensation_note(radius: float | None) -> str:
     return f"spot compensation: r={radius:.3f} mm"
 
 
+FRAME_EDGE_TOLERANCE_MM = 1e-6
+"""How far copper may pass the outline before it is called out, in millimetres."""
+
+
+def _frame_box(frame: Layer, x_scale: float, y_scale: float,
+               tan_skew: float) -> Box:
+    """The board outline in MACHINE coordinates, put through the same steps as rows.
+
+    The frame is a rectangle in figure millimetres. A machine row commanded to
+    ``height`` samples the figure at ``height · y_scale``, so a figure height ``y``
+    lands on machine height ``y / y_scale``; x is commanded as ``figure_x / x_scale``;
+    and the skew shifts every row by ``−y · tg θ``. Four corners through those steps
+    give the box the table check and the placement are allowed to see.
+    """
+    x0, y0, x1, y1 = frame.bbox
+    machine_ys = (y0 / y_scale, y1 / y_scale)
+    xs = tuple(x / x_scale - y * tan_skew for x in (x0, x1) for y in machine_ys)
+    return (min(xs), min(machine_ys), max(xs), max(machine_ys))
+
+
 def ink_box(rows: tuple[ScanRow, ...]) -> Box:
     """Bounding box of what actually gets drawn, in the current coordinates."""
     xs0: list[float] = []
@@ -256,6 +279,7 @@ def build_job(layer: Layer, machine: Machine, *, side: str = SIDE_TOP,
               process: str = PROCESS_ETCH, power: float | None = None,
               power_bands: tuple[PowerBand, ...] = (),
               notes: tuple[str, ...] = (),
+              frame: Layer | None = None,
               spot_compensation: bool = True,
               place_mm: tuple[float, float] = (0.0, 0.0)) -> Job:
     """Turn a layer into machine rows, applying the calibration and the limits.
@@ -264,6 +288,11 @@ def build_job(layer: Layer, machine: Machine, *, side: str = SIDE_TOP,
     of rows (a dose strip). It is refused together with spot compensation, because
     that step adds and removes rows: a band would then no longer own its rows, and
     attaching power by y afterwards would be a guess dressed up as a measurement.
+
+    ``frame`` is the board outline (usually Edge_Cuts). It — not this layer's copper —
+    defines the mirror axis, the placement and the table check, so the two sides of one
+    board land on the same rectangle even though F_Cu and B_Cu have different copper.
+    Without it the bottom side is refused: its own copper would silently shift it.
     """
     _check_choice(side, SIDES, _("side"))
     _check_choice(process, PROCESSES, _("process"))
@@ -271,6 +300,9 @@ def build_job(layer: Layer, machine: Machine, *, side: str = SIDE_TOP,
         raise JobError(
             _("Table origin {origin} is not supported yet: only {supported}")
             .format(origin=machine.table.origin, supported=SUPPORTED_ORIGIN))
+    if side == SIDE_BOTTOM and frame is None:
+        raise JobError(
+            _("The bottom side without a common frame will not line up with the top: pass the board outline with --frame"))
     if power is None and not power_bands:
         raise JobError(_("Power is required: one value, or bands for a dose strip"))
     if power is not None and power_bands:
@@ -283,6 +315,9 @@ def build_job(layer: Layer, machine: Machine, *, side: str = SIDE_TOP,
 
     calibration = machine.calibration
     warnings: list[str] = list(machine.warnings)
+    if frame is None:
+        warnings.append(
+            _("No common frame: the mirror and the placement use this layer's own copper, so a second side would not line up"))
 
     radius: float | None = None
     if spot_compensation:
@@ -323,9 +358,11 @@ def build_job(layer: Layer, machine: Machine, *, side: str = SIDE_TOP,
                 .format(y0=dose.y0_mm, y1=dose.y1_mm, step=machine.scan.row_step_mm))
     rows = tuple(rows_list)
 
-    # 2. what will be exposed: mirror for the bottom side...
+    # 2. what will be exposed: mirror for the bottom side about the FRAME, not about
+    # its own copper: F_Cu and B_Cu have different bounding boxes, so a mirror about
+    # the copper puts the sides of one board at different places on the table.
     if side == SIDE_BOTTOM:
-        figure = ink_box(rows)
+        figure = ink_box(rows) if frame is None else frame.bbox
         axis = (figure[0] + figure[2]) / 2.0
         rows = tuple(ScanRow(row.y_mm, mirror(row.segments, axis)) for row in rows)
     # ...then the polarity: copper, or the gaps between it.
@@ -351,17 +388,41 @@ def build_job(layer: Layer, machine: Machine, *, side: str = SIDE_TOP,
         # the correction is commanded x = figure x − y·tg θ — MINUS.
         rows = tuple(apply_skew(rows, -math.tan(math.radians(calibration.skew_deg))))
 
-    # 5. placement: the run-up start and the bottom edge go to place_mm.
+    # 5. placement: the run-up start and the bottom edge go to place_mm — of the
+    # FRAME when there is one, so both sides start at the same table point.
     overscan = machine.scan.overscan_mm
     ink = ink_box(rows)
+    tan_skew = math.tan(math.radians(calibration.skew_deg))
+    frame_machine = (_frame_box(frame, x_scale, y_scale, tan_skew)
+                     if frame is not None else None)
+    placing = frame_machine if frame_machine is not None else ink
     place_x, place_y = float(place_mm[0]), float(place_mm[1])
-    shift_x = place_x - (ink[0] - overscan)
-    shift_y = place_y - ink[1]
+    shift_x = place_x - (placing[0] - overscan)
+    shift_y = place_y - placing[1]
     rows = tuple(ScanRow(row.y_mm + shift_y, shift(row.segments, shift_x))
                  for row in rows)
     ink = (ink[0] + shift_x, ink[1] + shift_y, ink[2] + shift_x, ink[3] + shift_y)
+    frame_box: Box | None = None
+    if frame_machine is not None:
+        frame_box = (frame_machine[0] + shift_x, frame_machine[1] + shift_y,
+                     frame_machine[2] + shift_x, frame_machine[3] + shift_y)
+        if (ink[0] < frame_box[0] - FRAME_EDGE_TOLERANCE_MM
+                or ink[1] < frame_box[1] - FRAME_EDGE_TOLERANCE_MM
+                or ink[2] > frame_box[2] + FRAME_EDGE_TOLERANCE_MM
+                or ink[3] > frame_box[3] + FRAME_EDGE_TOLERANCE_MM):
+            warnings.append(
+                _("Copper sticks out of the board frame: x {x0} … {x1} against {f0} … {f1}, y {y0} … {y1} against {f2} … {f3} mm")
+                .format(x0=round(ink[0], 3), x1=round(ink[2], 3),
+                        f0=round(frame_box[0], 3), f1=round(frame_box[2], 3),
+                        y0=round(ink[1], 3), y1=round(ink[3], 3),
+                        f2=round(frame_box[1], 3), f3=round(frame_box[3], 3)))
 
-    _check_table(machine, ink, overscan)
+    # The table must hold everything the pass touches: the frame is the honest size of
+    # the board, but copper that sticks out would still be exposed off the table.
+    checked = ink if frame_box is None else (
+        min(ink[0], frame_box[0]), min(ink[1], frame_box[1]),
+        max(ink[2], frame_box[2]), max(ink[3], frame_box[3]))
+    _check_table(machine, checked, overscan)
 
     if radius is not None:
         period = machine.scan.speed_mm_s / machine.laser.pwm_hz
@@ -372,6 +433,12 @@ def build_job(layer: Layer, machine: Machine, *, side: str = SIDE_TOP,
 
     header = list(notes)
     header.append(_compensation_note(radius))
+    if frame_box is None:
+        header.append("frame: none (mirror axis and placement from this layer's own copper)")
+    else:
+        header.append(f"frame: x {frame_box[0]:.3f}-{frame_box[2]:.3f} "
+                      f"y {frame_box[1]:.3f}-{frame_box[3]:.3f} mm "
+                      f"(board outline: mirror axis and placement)")
     header.append(f"calibration in force: scale_x={x_scale:.6f} "
                   f"scale_y={y_scale:.6f} skew={calibration.skew_deg:.4f} deg")
     # The power word is a FRACTION of $30, so the controller setting is part of the
@@ -390,4 +457,4 @@ def build_job(layer: Layer, machine: Machine, *, side: str = SIDE_TOP,
                power_fraction=power, side=side, process=process,
                place_mm=(place_x, place_y), warnings=tuple(warnings),
                s_values=tuple(s_rows) if doses else (), doses=doses,
-               notes=tuple(header))
+               notes=tuple(header), frame_box=frame_box)

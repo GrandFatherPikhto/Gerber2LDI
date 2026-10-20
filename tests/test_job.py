@@ -138,9 +138,12 @@ def test_bottom_side_mirrors_the_figure(tmp_path, make_machine):
     """Mirror about the ink centre: the asymmetric figure changes shape."""
     machine = make_machine()
     layer = _layer(tmp_path, TWO_STRIPS)
-    top = build_job(layer, machine, power=0.5, spot_compensation=False, side=SIDE_TOP)
+    # The layer itself is the outline here: this cell is about the mirror, not about
+    # two different copper layers (see tests/test_frame.py for the frame's own cells).
+    top = build_job(layer, machine, power=0.5, spot_compensation=False, side=SIDE_TOP,
+                    frame=layer)
     bottom = build_job(layer, machine, power=0.5, spot_compensation=False,
-                       side=SIDE_BOTTOM)
+                       side=SIDE_BOTTOM, frame=layer)
     assert _middle(top).segments == ((5.0, 7.0), (10.0, 14.0))
     # Figure-space mirror about 4.5, then the +5 placement shift.
     assert _middle(bottom).segments == ((5.0, 9.0), (12.0, 14.0))
@@ -166,8 +169,8 @@ def test_skew_adds_the_same_shift_on_both_sides(tmp_path, make_machine,
         return row
 
     def shift_of(machine, side):
-        with_skew = build_job(layer, machine, power=0.5, side=side)
-        plain = build_job(layer, straight, power=0.5, side=side)
+        with_skew = build_job(layer, machine, power=0.5, side=side, frame=layer)
+        plain = build_job(layer, straight, power=0.5, side=side, frame=layer)
         moved = row_near(with_skew, probe_height)
         still = row_near(plain, probe_height)
         assert moved.y_mm == pytest.approx(still.y_mm, abs=1e-9)

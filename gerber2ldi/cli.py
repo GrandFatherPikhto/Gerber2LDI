@@ -170,8 +170,9 @@ def _cmd_job(args: argparse.Namespace) -> int:
     """Build the job for the machine and write the G-code."""
     layer = load_layer(args.gerber)
     machine = load_profile(args.profile)
+    frame = load_layer(args.frame) if args.frame else None
     job = build_job(layer, machine, side=args.side, process=args.process,
-                    power=args.power, place_mm=args.place,
+                    power=args.power, place_mm=args.place, frame=frame,
                     spot_compensation=not args.no_spot_compensation)
     _print_warnings(job.warnings)
     write_gcode(job, args.output)
@@ -192,8 +193,9 @@ def _cmd_preview(args: argparse.Namespace) -> int:
         if args.profile:
             machine = load_profile(args.profile)
             power = args.power if args.power is not None else machine.laser.usable_fraction
+            frame = load_layer(args.frame) if args.frame else None
             job = build_job(layer, machine, side=args.side, process=args.process,
-                            power=power, place_mm=args.place,
+                            power=power, place_mm=args.place, frame=frame,
                             spot_compensation=not args.no_spot_compensation)
             _print_warnings(job.warnings)
             rows, box = job.rows, job.box
@@ -336,6 +338,8 @@ def build_parser() -> argparse.ArgumentParser:
         description=_("make a machine job"))
     job.add_argument("gerber", help=_("Gerber file"))
     _add_job_options(job, power_required=True)
+    job.add_argument("--frame", default=None,
+                     help=_("board outline (Edge_Cuts) shared by both sides"))
     job.add_argument("-o", "--output", required=True, help=_("output G-code"))
     job.set_defaults(handler=_cmd_job)
 
@@ -410,6 +414,8 @@ def build_parser() -> argparse.ArgumentParser:
     preview.add_argument("input", help=_("input Gerber or G-code"))
     preview.add_argument("-o", "--output", required=True, help=_("output PNG"))
     preview.add_argument("--profile", default=None, help=_("machine profile (TOML)"))
+    preview.add_argument("--frame", default=None,
+                         help=_("board outline (Edge_Cuts) shared by both sides"))
     preview.add_argument("--side", choices=SIDES, default=SIDE_TOP,
                          help=_("side of the board"))
     preview.add_argument("--process", choices=PROCESSES, default=PROCESS_ETCH,

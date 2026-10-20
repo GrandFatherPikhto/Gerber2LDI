@@ -16,12 +16,16 @@ job has **not been run on the machine yet** — everything marked so below is un
 gerber2ldi info layer.gbr                     # units, size, apertures, polarity
 gerber2ldi raster layer.gbr -o layer.tif      # rows + a preview TIFF for the eyes
 gerber2ldi job layer.gbr --profile profiles/china_ldi_grbl.toml \
-    --power 0.6 -o layer.nc                   # the machine program
+    --power <from the dose strip> -o layer.nc # the machine program
 gerber2ldi preview layer.nc -o layer.png      # what the machine will draw
-gerber2ldi pattern bars   --profile P --power 0.6 -o bars.nc
+gerber2ldi pattern bars   --profile P --power 0.05 -o bars.nc
 gerber2ldi pattern dose   --profile P --from 0.02 --to 0.16 --count 6 -o dose.nc
-gerber2ldi pattern square --profile P --power 0.6 -o square.nc
+gerber2ldi pattern square --profile P --power 0.05 -o square.nc
 ```
+
+The power in the examples is deliberately small: the first boards are exposed at a
+low fraction, and the working value comes from the dose strip (step 9), never from
+this page.
 
 ## What this program does not do
 
@@ -84,19 +88,32 @@ that you accept a wider line than drawn.
 
 ```sh
 gerber2ldi job F_Cu.gbr --profile profiles/china_ldi_grbl.toml \
-    --power 0.6 -o top.nc
+    --power 0.05 --frame Edge_Cuts.gbr -o top.nc
 gerber2ldi job B_Cu.gbr --profile profiles/china_ldi_grbl.toml \
-    --power 0.6 --side bottom --process plating-resist --place 20,30 -o bottom.nc
+    --power 0.05 --side bottom --process etch-resist \
+    --frame Edge_Cuts.gbr --place 20,30 -o bottom.nc
 ```
 
+* `--frame` is the board outline, the SAME file for both sides. It is the rectangle
+  the figure is mirrored about and placed by, so the two sides land on each other;
+  the bottom side without it is a refusal.
 * `--side bottom` mirrors the figure: the resist is exposed from the other side.
 * `--process` is what the resist is for: `etch-resist` lights the COPPER (the resist
-  stays where the copper is), `plating-resist` lights the GAPS.
+  stays where the copper is), `plating-resist` lights the GAPS. **One board is one
+  process**: both sides of an etch-resist board are etched, so both jobs use the same
+  value; only a board that changes process between sides would differ.
 * `--power` is a fraction of the module and above `usable_fraction` it is a refusal,
-  never a clamp.
-* `--place X,Y` puts the run-up strip start at that table point. KiCad writes negative
-  Y coordinates; the program places the figure on the table and checks the whole pass,
-  run-up included, against the table. Without `--place` the figure goes to the origin.
+  never a clamp. `0.05` above is a safe first value — take the real one from the dose
+  strip.
+* `--place X,Y` puts the run-up strip start at that table point, and the frame's bottom
+  edge on `Y`. Use ONE `--place` for both sides. KiCad writes negative Y coordinates;
+  the program places the frame on the table and checks the whole pass, run-up included,
+  against the table. Without `--place` the frame goes to the origin.
+
+**Two sides line up only through the frame and the blank's stop.** Expose the first
+side, turn the blank over left to right against the same stop, expose the second. There
+is no camera and no hole-based alignment in this program: if the blank can move between
+the runs, the sides will not line up, and nothing in the file can fix that.
 
 ### 4. Check before exposing
 
@@ -177,14 +194,17 @@ because a dialog on the PC is a promise nobody can keep while the motion is unde
 
 ### 9. Calibration, step by step
 
-1. `pattern bars --profile … --power 0.6 -o bars.nc` — expose and develop. The
-   smallest group whose lines and gaps survived gives the spot: `spot_radius_um` ≈ half
-   of the narrowest resolved width (an upper estimate; the compensation erodes the
-   figure by that radius).
+1. `pattern bars --profile … --power 0.05 -o bars.nc` — expose and develop. Measure the
+   WIDTH of a drawn line under a microscope, in the 200 µm group: without compensation
+   a line drawn `w` wide comes out `w + 2r`, so
+   `spot_radius_um = (measured − w) / 2`. Check it on the 150 µm group: both groups must
+   give the same radius. That radius already includes the spread of development, which
+   is exactly what the compensation has to erode away. A rough check without a
+   microscope: the narrowest group whose lines AND gaps survived is about `2r` wide.
 2. `pattern dose --profile … --from 0.02 --to 0.16 --count 6 -o dose.nc` — expose and
    develop; the tile that looks right gives `--power` for the boards. The mapping
    “tile, bottom to top → y, power, S” is printed and written into the header.
-3. `pattern square --profile … --power 0.6 -o square.nc` — expose, then measure both
+3. `pattern square --profile … --power 0.05 -o square.nc` — expose, then measure both
    diagonals and both sides with calipers. `d1` runs from the front-left corner to the
    back-right one, `d2` from the front-right to the back-left, and
    `theta = (d1 - d2) / (√2 · L)` with `L` measured, not nominal. The command prints
@@ -210,7 +230,7 @@ because the bars are what the spot is measured FROM.
 | the wrong side came out | `--side` | `top` for the side you draw first, `bottom` for the mirrored one |
 | the figure sits on the table edge or outside it | work zero not set, or no `--place` | `G10 L20 P1 X0 Y0` at `front-left`, or `--place X,Y` |
 | tracks thicker than drawn, gaps closed | no compensation, or a wrong `spot_radius_um` | measure again with `bars`, set the radius |
-| the two sides do not line up | wrong sign of `skew_deg`, or a wrong scale | `pattern square --with-calibration`, use the printed formulas |
+| the two sides do not line up | no common frame (`--frame`), the blank moved between the runs, wrong sign of `skew_deg`, or a wrong scale | one `--frame` and one `--place` for both sides and the same stop for the blank; then `pattern square --with-calibration` and use the printed formulas |
 | nothing is exposed at all | an old program without `M4` after `G0` | regenerate the file; check the pattern below |
 
 A correct pass looks like this (the first lines of any `.nc`):
