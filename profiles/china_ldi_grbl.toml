@@ -36,20 +36,21 @@ name = "china-ldi"
 firmware = "grbl"            # grbl | grblhal | fluidnc
 
 [table]
-size_x_mm = 210              # MEASURE: which axis is the 270 one is still unclear
-size_y_mm = 270
+size_x_mm = 210              # $130 = 210 (X travel)
+size_y_mm = 270              # $131 = 270 (Y travel)
 origin = "front-left"        # front-left | front-right | back-left | back-right
 
 [laser]
 wavelength_nm = 405
 power_w = 0.0                # MEASURE: OPTICAL power of the module, not the label
 usable_fraction = 0.8        # power ceiling as a fraction; S above this is never issued
-s_max = 1000                 # MEASURE: firmware $30 — which S is full power
+s_max = 1000                 # $30 = 1000: S1000 is full power
 pwm_hz = 1000                # MEASURE: firmware PWM frequency (the "PWM draws dashes" check)
 
 [scan]
 scan_axis = "x"              # MEASURE: which axis scans
-row_step_um = 20             # MEASURE
-speed_mm_s = 50              # MEASURE
-overscan_mm = 5              # MEASURE against the dose tolerance (design §4.2)
+row_step_um = 25             # a whole number of Y steps: $101 = 80 step/mm -> 12.5 um/step;
+                             # 20 um would land rows 12.5/25 um apart in turn (banding)
+speed_mm_s = 50              # $110 = 5000 mm/min (83 mm/s) is the ceiling
+overscan_mm = 8              # v^2/(2a) = 50^2/(2*250, $120) = 5 mm to full speed, plus margin
 bidirectional = false        # start with one direction (design §4.3)
