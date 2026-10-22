@@ -290,8 +290,8 @@ msgstr "Не удалось собрать шаблон: {error}"
 msgid "write a calibration program"
 msgstr "записать калибровочную программу"
 
-msgid "write a calibration program: test bars, dose strip, skew square"
-msgstr "записать калибровочную программу: тестовые штрихи, полоска дозы, квадрат для перекоса"
+msgid "write a calibration program: test bars, dose strip, skew square, grid"
+msgstr "записать калибровочную программу: тестовые штрихи, полоска дозы, квадрат для перекоса, сетка"
 
 msgid "test bars: lines and gaps of known widths"
 msgstr "тестовые штрихи: линии и промежутки известных ширин"
@@ -370,3 +370,48 @@ msgstr "Профиль {path}: scan.row_step_um = {row:g} мкм — не цел
 
 msgid "{count} segments are shorter than the X motor step {step} mm: their edges snap to it, so the exposed ends move by up to half a step"
 msgstr "Отрезков короче шага мотора по X ({step} мм): {count}; их края прилипают к шагу, и концы засветки уезжают до половины шага"
+
+msgid "The line {value} mm across Y comes out {low} or {high} mm: the row step is {step} mm"
+msgstr "Линия {value} мм по Y выйдет {low} или {high} мм: шаг строк {step} мм"
+
+msgid "The gap {value} mm across Y comes out {low} or {high} mm: the row step is {step} mm"
+msgstr "Промежуток {value} мм по Y выйдет {low} или {high} мм: шаг строк {step} мм"
+
+msgid "Grid {width} x {height} mm: line {line} mm, gap {gap} mm, period {period} mm"
+msgstr "Сетка {width} x {height} мм: линия {line} мм, промежуток {gap} мм, период {period} мм"
+
+msgid "Lines along X: {along_x}, along Y: {along_y}, direction {direction}"
+msgstr "Линий вдоль X: {along_x}, вдоль Y: {along_y}, направление {direction}"
+
+msgid "Spot compensation: {state}"
+msgstr "Компенсация пятна: {state}"
+
+msgid "on"
+msgstr "вкл"
+
+msgid "off"
+msgstr "выкл"
+
+msgid "The first line is flush with the near edge and the leftover at the far edge is a gap; the width of a line along X quantises to the row step"
+msgstr "Первая линия — вплотную к ближнему краю, остаток у дальнего края — промежуток; ширина линии вдоль X квантуется шагом строк"
+
+msgid "grid: a rectangle filled with lines"
+msgstr "сетка: прямоугольник, заполненный линиями"
+
+msgid "grid: fill a rectangle with lines — a coating test over the whole area"
+msgstr "сетка: заполнить прямоугольник линиями — тест покрытия по всей площади"
+
+msgid "width of the rectangle, mm"
+msgstr "ширина прямоугольника, мм"
+
+msgid "height of the rectangle, mm"
+msgstr "высота прямоугольника, мм"
+
+msgid "line width, mm"
+msgstr "ширина линии, мм"
+
+msgid "gap between the lines, mm"
+msgstr "промежуток между линиями, мм"
+
+msgid "lines along X, along Y, or both"
+msgstr "линии вдоль X, вдоль Y или и те и другие"

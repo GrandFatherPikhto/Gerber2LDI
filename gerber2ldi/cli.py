@@ -19,9 +19,11 @@ from .backends.gcode import read_segments, write_gcode
 from .errors import Gerber2LDIError, JobError
 from .i18n import _, setup_i18n
 from .job import PROCESSES, SIDES, SIDE_TOP, PROCESS_ETCH, build_job, ink_box, load_profile
-from .patterns import (DEFAULT_LENGTH_MM, DEFAULT_LINE_WIDTH_MM, DEFAULT_SIDE_MM,
-                       DEFAULT_TILE_HEIGHT_MM, DEFAULT_TILE_WIDTH_MM, DEFAULT_WIDTHS_MM,
-                       Pattern, bars, dose, powers_from_series, square)
+from .patterns import (DEFAULT_GRID_GAP_MM, DEFAULT_GRID_HEIGHT_MM, DEFAULT_GRID_LINE_MM,
+                       DEFAULT_GRID_WIDTH_MM, DEFAULT_LENGTH_MM, DEFAULT_LINE_WIDTH_MM,
+                       DEFAULT_SIDE_MM, DEFAULT_TILE_HEIGHT_MM, DEFAULT_TILE_WIDTH_MM,
+                       DEFAULT_WIDTHS_MM, GRID_DIRECTIONS, Pattern, bars, dose,
+                       fit_lines, grid, powers_from_series, square)
 from .preview import write_preview
 from .raster import iter_rows, write_tiff
 from .source import load_layer
@@ -251,6 +253,21 @@ def _pattern_report(args: argparse.Namespace, pattern: Pattern, job) -> list[str
                                  y1=round(level.y1_mm, 3),
                                  power=round(level.power, 4), s=level.s_value))
         return lines
+    if args.kind == "grid":
+        return [
+            _("Grid {width} x {height} mm: line {line} mm, gap {gap} mm, period {period} mm")
+            .format(width=args.width_mm, height=args.height_mm, line=args.line_mm,
+                    gap=args.gap_mm, period=round(args.line_mm + args.gap_mm, 4)),
+            _("Lines along X: {along_x}, along Y: {along_y}, direction {direction}")
+            .format(along_x=(fit_lines(args.height_mm, args.line_mm, args.gap_mm)
+                             if args.direction in ("both", "x") else 0),
+                    along_y=(fit_lines(args.width_mm, args.line_mm, args.gap_mm)
+                             if args.direction in ("both", "y") else 0),
+                    direction=args.direction),
+            _("Spot compensation: {state}")
+            .format(state=_("on") if args.with_compensation else _("off")),
+            _("The first line is flush with the near edge and the leftover at the far edge is a gap; the width of a line along X quantises to the row step"),
+        ]
     return [
         _("Square {side} mm, line {width} mm, calibration {state}")
         .format(side=args.side_mm, width=args.line_width_mm,
@@ -274,6 +291,10 @@ def _cmd_pattern(args: argparse.Namespace) -> int:
         elif args.kind == "dose":
             built = dose(machine, _dose_levels(args), tile_width_mm=args.tile_width_mm,
                          tile_height_mm=args.tile_height_mm)
+        elif args.kind == "grid":
+            built = grid(machine, width_mm=args.width_mm, height_mm=args.height_mm,
+                         line_mm=args.line_mm, gap_mm=args.gap_mm,
+                         direction=args.direction)
         else:
             built = square(machine, side_mm=args.side_mm,
                            line_width_mm=args.line_width_mm,
@@ -346,7 +367,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     pattern = subparsers.add_parser(
         "pattern", help=_("write a calibration program"),
-        description=_("write a calibration program: test bars, dose strip, skew square"))
+        description=_("write a calibration program: test bars, dose strip, skew square, grid"))
     pattern.set_defaults(handler=_cmd_pattern, kind=None)
     kinds = pattern.add_subparsers(dest="kind", metavar="KIND")
 
@@ -389,6 +410,32 @@ def build_parser() -> argparse.ArgumentParser:
     dose_parser.add_argument("--with-compensation", action="store_true",
                              help=_("apply spot compensation (refused with per-row power)"))
     dose_parser.set_defaults(handler=_cmd_pattern)
+
+    grid_parser = kinds.add_parser(
+        "grid", help=_("grid: a rectangle filled with lines"),
+        description=_("grid: fill a rectangle with lines — a coating test over the whole area"))
+    grid_parser.add_argument("--profile", required=True, help=_("machine profile (TOML)"))
+    grid_parser.add_argument("-o", "--output", required=True, help=_("output G-code"))
+    grid_parser.add_argument("--power", type=_fraction, required=True,
+                             help=_("laser power as a fraction of the module"))
+    grid_parser.add_argument("--width-mm", type=_positive_mm,
+                             default=DEFAULT_GRID_WIDTH_MM,
+                             help=_("width of the rectangle, mm"))
+    grid_parser.add_argument("--height-mm", type=_positive_mm,
+                             default=DEFAULT_GRID_HEIGHT_MM,
+                             help=_("height of the rectangle, mm"))
+    grid_parser.add_argument("--line-mm", type=_positive_mm,
+                             default=DEFAULT_GRID_LINE_MM, help=_("line width, mm"))
+    grid_parser.add_argument("--gap-mm", type=_positive_mm,
+                             default=DEFAULT_GRID_GAP_MM,
+                             help=_("gap between the lines, mm"))
+    grid_parser.add_argument("--direction", choices=GRID_DIRECTIONS, default="both",
+                             help=_("lines along X, along Y, or both"))
+    grid_parser.add_argument("--place", type=_place, default=(0.0, 0.0),
+                             help=_("where to put the run-up start, mm as X,Y"))
+    grid_parser.add_argument("--with-compensation", action="store_true",
+                             help=_("apply spot compensation (off by default)"))
+    grid_parser.set_defaults(handler=_cmd_pattern)
 
     square_parser = kinds.add_parser(
         "square", help=_("skew square: a contour L×L to measure the diagonals"),

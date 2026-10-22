@@ -290,7 +290,7 @@ msgstr ""
 msgid "write a calibration program"
 msgstr ""
 
-msgid "write a calibration program: test bars, dose strip, skew square"
+msgid "write a calibration program: test bars, dose strip, skew square, grid"
 msgstr ""
 
 msgid "test bars: lines and gaps of known widths"
@@ -369,4 +369,49 @@ msgid "Profile {path}: scan.row_step_um = {row:g} um is not a whole number of mo
 msgstr ""
 
 msgid "{count} segments are shorter than the X motor step {step} mm: their edges snap to it, so the exposed ends move by up to half a step"
+msgstr ""
+
+msgid "The line {value} mm across Y comes out {low} or {high} mm: the row step is {step} mm"
+msgstr ""
+
+msgid "The gap {value} mm across Y comes out {low} or {high} mm: the row step is {step} mm"
+msgstr ""
+
+msgid "Grid {width} x {height} mm: line {line} mm, gap {gap} mm, period {period} mm"
+msgstr ""
+
+msgid "Lines along X: {along_x}, along Y: {along_y}, direction {direction}"
+msgstr ""
+
+msgid "Spot compensation: {state}"
+msgstr ""
+
+msgid "on"
+msgstr ""
+
+msgid "off"
+msgstr ""
+
+msgid "The first line is flush with the near edge and the leftover at the far edge is a gap; the width of a line along X quantises to the row step"
+msgstr ""
+
+msgid "grid: a rectangle filled with lines"
+msgstr ""
+
+msgid "grid: fill a rectangle with lines — a coating test over the whole area"
+msgstr ""
+
+msgid "width of the rectangle, mm"
+msgstr ""
+
+msgid "height of the rectangle, mm"
+msgstr ""
+
+msgid "line width, mm"
+msgstr ""
+
+msgid "gap between the lines, mm"
+msgstr ""
+
+msgid "lines along X, along Y, or both"
 msgstr ""

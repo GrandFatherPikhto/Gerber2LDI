@@ -21,6 +21,8 @@ gerber2ldi preview layer.nc -o layer.png      # what the machine will draw
 gerber2ldi pattern bars   --profile P --power 0.05 -o bars.nc
 gerber2ldi pattern dose   --profile P --from 0.02 --to 0.16 --count 6 -o dose.nc
 gerber2ldi pattern square --profile P --power 0.05 -o square.nc
+gerber2ldi pattern grid   --profile P --power 0.05 \
+    --width-mm 50 --height-mm 40 --line-mm 0.2 --gap-mm 0.15 -o grid.nc
 ```
 
 The power in the examples is deliberately small: the first boards are exposed at a
@@ -37,8 +39,9 @@ this page.
   the sender's “zero” button).
 * **It does not talk to the machine.** No port, no streaming: it writes a file. Send
   it with UGS, LaserGRBL or Candle.
-* **It does not calibrate itself.** The three patterns are exposed and measured by
-  you, with calipers and a microscope; the numbers go into the calibration file.
+* **It does not calibrate itself.** The bars, the dose strip and the square are exposed
+  and measured by you, with calipers and a microscope; the numbers go into the
+  calibration file. The grid is not a measurement at all: it is the coating test.
 * **It does not diagnose the process.** It refuses what it can prove is wrong; the
   rest is the symptom table at the end.
 * **It does not make the process safe.** The screen, the goggles and the stop button
@@ -227,10 +230,21 @@ because a dialog on the PC is a promise nobody can keep while the motion is unde
    `skew_new = 0.1000 deg + theta`. A scale is a factor, so it is multiplied; a skew is
    an angle, so it is added.
 
+6. `pattern grid --profile … --power 0.05 --width-mm 50 --height-mm 40 --line-mm 0.2
+   --gap-mm 0.15 -o grid.nc` — the COATING test, not a measurement: the rectangle is
+   filled with lines, so the whole working area is exposed at once and the development is
+   judged over square centimetres instead of one bar. `--direction both|x|y` picks vertical
+   lines, horizontal ones or both. The lines start flush with the near edge and the
+   leftover at the far edge is a gap. A line ALONG X is a band of rows, so its width and
+   the gap above it are rounded to the row step (`scan.row_step_um`): the command names
+   both widths you will actually get (0.21 mm on a 0.025 mm step is 0.200 or 0.225), and
+   it prints how many lines went along each axis.
+
 The square ignores the profile's scale and skew unless `--with-calibration` is given:
 it measures them, and measuring a value through itself gives a residual, not a value.
-All three patterns run without spot compensation unless `--with-compensation` is given,
-because the bars are what the spot is measured FROM.
+All four patterns run without spot compensation unless `--with-compensation` is given,
+because the bars are what the spot is measured FROM, and a grid drawn through an
+unmeasured radius would hide exactly what it exists to show.
 
 ### 10. If something is wrong
 

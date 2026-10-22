@@ -260,3 +260,50 @@ def test_pattern_square_too_big_for_the_table_is_one_line(tmp_path, capsys,
     assert captured.out == ""
     assert "across" in captured.err
     assert not target.exists()
+
+
+def test_pattern_grid_fills_the_rectangle_and_prints_the_counts(tmp_path, capsys,
+                                                                profile_text):
+    """Г1: the operator reads the numbers off the terminal AND off the header.
+
+    A grid has nothing to label the board with, so the printed counts are the label: how
+    many lines along each axis, the period, and whether the spot compensation was on.
+    """
+    profile = _machine_files(tmp_path, profile_text, NO_SPOT)
+    target = tmp_path / "grid.nc"
+    assert main(["pattern", "grid", "--profile", str(profile), "--power", "0.6",
+                 "--width-mm", "4", "--height-mm", "3", "--line-mm", "0.2",
+                 "--gap-mm", "0.3", "-o", str(target)]) == 0
+    out = capsys.readouterr().out
+    assert "Grid 4.0 x 3.0 mm" in out
+    assert "Lines along X: 6, along Y: 8, direction both" in out
+    assert "Spot compensation: off" in out
+    assert "; pattern: grid, 4.000 x 3.000 mm" in target.read_text()
+
+
+def test_pattern_grid_too_short_for_a_line_is_one_line(tmp_path, capsys, profile_text):
+    """A pattern refusal is one line, no traceback, and no file left behind."""
+    profile = _machine_files(tmp_path, profile_text, NO_SPOT)
+    target = tmp_path / "grid.nc"
+    assert main(["pattern", "grid", "--profile", str(profile), "--power", "0.6",
+                 "--height-mm", "0.1", "-o", str(target)]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "holds no line" in captured.err
+    assert not target.exists()
+
+
+def test_pattern_grid_says_whether_the_spot_compensation_was_used(tmp_path, capsys,
+                                                                  profile_text,
+                                                                  calibration_text):
+    """Г1: off by default, on with the measured radius — said in stdout and the header."""
+    profile = _machine_files(tmp_path, profile_text, calibration_text)
+    target = tmp_path / "grid.nc"
+    options = ["pattern", "grid", "--profile", str(profile), "--power", "0.6",
+               "--width-mm", "20", "--height-mm", "10", "--line-mm", "2",
+               "--gap-mm", "1", "-o", str(target)]
+    assert main(options) == 0
+    assert "Spot compensation: off" in capsys.readouterr().out
+    assert main([*options[:-2], "--with-compensation", *options[-2:]]) == 0
+    assert "Spot compensation: on" in capsys.readouterr().out
+    assert "; spot compensation: r=0.150 mm" in target.read_text()

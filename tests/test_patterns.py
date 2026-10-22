@@ -9,6 +9,12 @@ Cells:
     dose            S на строку: три уровня, границы полос на строках
     dose уровень    выше потолка → отказ (не подрезка), полоса без строки → отказ
     dose полосы     пересечение, power вместе с bands, ни одного — отказы
+    grid влезает    целых линий в отрезок: ровно по краю, на 1 мкм короче, остаток
+    grid направление x / y / both: сколько фигур, какая сторона у линии
+    grid период     начала линий через период = линия + промежуток
+    grid ширина     в .nc (обратный разбор): 0.2 в промежутке, 4.0 в полосе строк
+    grid кратность  0.21/0.25 при шаге 0.02 — два предупреждения; 0.2/0.3 — тишина
+    grid отказы     линия 0, промежуток 0, сторона меньше линии, чужое направление
     Job             s_values неверной длины и не-ASCII заметка — отказы
 
 The pattern is a synthetic `Layer` built from `source.Shape` polygons, so it goes
@@ -19,10 +25,10 @@ import math
 
 import pytest
 
-from gerber2ldi.backends.gcode import render_gcode, write_gcode
+from gerber2ldi.backends.gcode import read_segments, render_gcode, write_gcode
 from gerber2ldi.errors import JobError
 from gerber2ldi.job import Dose, Job, PowerBand, build_job
-from gerber2ldi.patterns import bars, dose, powers_from_series
+from gerber2ldi.patterns import bars, dose, fit_lines, grid, powers_from_series
 from gerber2ldi.patterns.shapes import layer_of, rectangle
 from gerber2ldi.scan import ScanRow
 
@@ -203,6 +209,123 @@ def test_powers_from_series_is_geometric():
 def test_dose_rejects_an_empty_level_list(make_machine):
     with pytest.raises(ValueError):
         dose(make_machine(calibration_text=NO_SPOT), ())
+
+
+# The grid cells all use the same rectangle: 4 x 3 mm, line 0.2, gap 0.3, period 0.5,
+# so 8 lines fit across and 6 up, and the numbers read at a glance.
+FIT_LINES_CELLS = [
+    ((4.0, 0.2, 0.3), 8, "eight lines across a side of four millimetres"),
+    ((3.0, 0.2, 0.3), 6, "six lines across a side of three millimetres"),
+    ((1.7, 0.2, 0.3), 4, "the last line ends flush with the far edge"),
+    ((1.699, 0.2, 0.3), 3, "one micrometre short and the last line does not fit"),
+    ((1.8, 0.2, 0.3), 4, "the leftover at the far edge is a gap"),
+    ((0.2, 0.2, 0.3), 1, "exactly one line and nothing else"),
+    ((0.199, 0.2, 0.3), 0, "no line fits at all"),
+]
+
+
+@pytest.mark.parametrize("args, expected, why", FIT_LINES_CELLS,
+                         ids=[cell[2] for cell in FIT_LINES_CELLS])
+def test_fit_lines_counts_whole_lines_only(args, expected, why):
+    """Г1: a line either fits ENTIRELY or is not drawn — no slivers at the far edge."""
+    assert fit_lines(*args) == expected
+
+
+@pytest.mark.parametrize("direction, along_x, along_y",
+                         [("x", 6, 0), ("y", 0, 8), ("both", 6, 8)],
+                         ids=["along X", "along Y", "both"])
+def test_grid_draws_the_lines_it_is_asked_for(make_machine, direction, along_x, along_y):
+    """Г1: `x` — horizontal lines stacked in Y, `y` — vertical stacked in X, `both` — union."""
+    pattern = grid(make_machine(calibration_text=NO_SPOT), width_mm=4.0, height_mm=3.0,
+                   line_mm=0.2, gap_mm=0.3, direction=direction)
+    shapes = pattern.layer.shapes
+    horizontal = [shape for shape in shapes
+                  if shape.bbox[2] - shape.bbox[0] == pytest.approx(4.0)]
+    vertical = [shape for shape in shapes
+                if shape.bbox[3] - shape.bbox[1] == pytest.approx(3.0)]
+    assert (len(horizontal), len(vertical)) == (along_x, along_y)
+    assert all(shape.bbox[3] - shape.bbox[1] == pytest.approx(0.2)
+               for shape in horizontal)
+    assert all(shape.bbox[2] - shape.bbox[0] == pytest.approx(0.2)
+               for shape in vertical)
+
+
+def test_grid_puts_its_lines_a_period_apart(make_machine):
+    """Г1: the period is line + gap, the first line flush with the near edge."""
+    pattern = grid(make_machine(calibration_text=NO_SPOT), width_mm=4.0, height_mm=3.0,
+                   line_mm=0.2, gap_mm=0.3, direction="y")
+    starts = [shape.bbox[0] for shape in pattern.layer.shapes]
+    assert starts == [pytest.approx(0.5 * index) for index in range(len(starts))]
+    assert starts[-1] + 0.2 == pytest.approx(3.7)
+
+
+def test_the_grid_reaches_the_machine_as_lines_of_the_asked_width(tmp_path, make_machine):
+    """Г1: the back-parsed program, not the geometry — what the machine will expose.
+
+    A row inside a band of rows carries one 4 mm segment (the horizontal line); a row in
+    the gap between bands carries the eight 0.2 mm vertical lines. The fixture's row step
+    is 20 um, so a 0.2 mm line is exactly ten rows and a 0.3 mm gap exactly fifteen.
+    """
+    machine = make_machine(calibration_text=NO_SPOT)
+    pattern = grid(machine, width_mm=4.0, height_mm=3.0, line_mm=0.2, gap_mm=0.3)
+    job = build_job(pattern.layer, pattern.machine, power=0.5, notes=pattern.notes,
+                    spot_compensation=False)
+    rows = read_segments(write_gcode(job, tmp_path / "grid.nc"))
+    inked = [row for row in rows if row.segments]
+    assert len(inked) == 150, "3 mm / 0.02 mm rows, every one of them inked"
+    band_rows = [row for row in inked if len(row.segments) == 1]
+    gap_rows = [row for row in inked if len(row.segments) == 8]
+    assert len(band_rows) == 6 * 10, "six lines along X, ten rows each"
+    assert len(gap_rows) == 150 - 60
+    assert {round(end - start, 6)
+            for row in band_rows for start, end in row.segments} == {4.0}
+    assert {round(end - start, 6)
+            for row in gap_rows for start, end in row.segments} == {0.2}
+    # Placement anchors the run-up at 0, so the ink starts one overscan (5 mm) later.
+    assert [start for start, _end in gap_rows[0].segments] == [
+        pytest.approx(5.0 + 0.5 * index) for index in range(8)]
+
+
+def test_grid_announces_bands_the_row_step_cannot_make(make_machine):
+    """Г1: a line along X is a band of rows — 0.21 mm on a 0.02 mm step is 10.5 rows."""
+    pattern = grid(make_machine(calibration_text=NO_SPOT), line_mm=0.21, gap_mm=0.25)
+    text = " | ".join(pattern.warnings)
+    assert "0.2 or 0.22" in text, "0.21 mm / 0.02 mm = 10.5 rows"
+    assert "0.24 or 0.26" in text, "0.25 mm / 0.02 mm = 12.5 rows"
+
+
+def test_grid_is_silent_when_both_band_widths_are_whole_rows(make_machine):
+    """Г1 control: 0.2 and 0.3 on a 0.02 mm step are 10 and 15 rows — nothing to say."""
+    pattern = grid(make_machine(calibration_text=NO_SPOT), line_mm=0.2, gap_mm=0.3)
+    assert not any("row step" in warning for warning in pattern.warnings)
+
+
+def test_grid_says_nothing_about_bands_it_does_not_draw(make_machine):
+    """Г1: with lines along Y only, no band is quantised by the row step."""
+    pattern = grid(make_machine(calibration_text=NO_SPOT), line_mm=0.21, gap_mm=0.25,
+                   direction="y")
+    assert not any("row step" in warning for warning in pattern.warnings)
+
+
+GRID_REFUSAL_CELLS = [
+    ({"line_mm": 0.0}, "line", "a line has no width"),
+    ({"gap_mm": 0.0}, "gap", "a gap of zero closes the lines into a solid block"),
+    ({"direction": "z"}, "direction", "an unknown direction"),
+    ({"height_mm": 0.15, "direction": "x"}, "holds no line",
+     "too short for one line along X"),
+    ({"width_mm": 0.15, "direction": "y"}, "holds no line",
+     "too narrow for one line along Y"),
+]
+
+
+@pytest.mark.parametrize("options, message, why", GRID_REFUSAL_CELLS,
+                         ids=[cell[2] for cell in GRID_REFUSAL_CELLS])
+def test_grid_refuses_requests_it_cannot_draw(make_machine, options, message, why):
+    """Г1: a refusal with a word, never a silently different picture."""
+    machine = make_machine(calibration_text=NO_SPOT)
+    request = {"width_mm": 4.0, "height_mm": 3.0, "line_mm": 0.2, "gap_mm": 0.3, **options}
+    with pytest.raises(ValueError, match=message):
+        grid(machine, **request)
 
 
 def test_dose_bands_are_used_by_the_job_as_dose_objects(make_machine):
