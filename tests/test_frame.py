@@ -206,6 +206,23 @@ def test_the_top_side_without_a_frame_still_works_and_says_so(tmp_path, make_mac
     assert any("No common frame" in warning for warning in job.warnings)
 
 
+@pytest.mark.parametrize("board, expected", [(True, True), (False, False)],
+                         ids=["a board", "a pattern"])
+def test_only_a_board_is_told_about_the_missing_frame(tmp_path, make_machine, board,
+                                                      expected):
+    """A pattern has no second side, so the board hint is useless there (Г3 of
+    `plan_2026_10_22_pattern_grid`): `pattern bars` printed "a second side ... needs
+    --frame", a flag a pattern cannot make sense of.
+
+    Same layer, same machine, only `board` differs — the cell measures the flag, and the
+    "a board" row is the control that proves the warning is still there for a real board.
+    """
+    machine = make_machine(calibration_text=NO_CALIBRATION)
+    top_layer = _layer(tmp_path, "F_Cu.gbr", FRONT)
+    job = build_job(top_layer, machine, power=0.5, spot_compensation=False, board=board)
+    assert any("needs --frame" in warning for warning in job.warnings) is expected
+
+
 def test_copper_that_passes_the_outline_is_announced(tmp_path, make_machine):
     """The frame places the board; copper outside it is a design error, not a shift."""
     machine = make_machine(calibration_text=NO_CALIBRATION)

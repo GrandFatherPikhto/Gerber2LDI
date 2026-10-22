@@ -179,6 +179,32 @@ def test_pattern_bars_needs_no_measured_spot(tmp_path, capsys, profile_text):
     assert "; spot compensation: off" in target.read_text()
 
 
+PATTERN_COMMANDS = [
+    ("bars", ["--power", "0.6"]),
+    ("dose", ["--powers", "0.02,0.05"]),
+    ("square", ["--power", "0.6"]),
+]
+
+
+@pytest.mark.parametrize("kind, options", PATTERN_COMMANDS,
+                         ids=[command[0] for command in PATTERN_COMMANDS])
+def test_a_pattern_does_not_talk_about_the_board_frame(tmp_path, capsys, profile_text,
+                                                       kind, options):
+    """A calibration pattern is not a board, so the `--frame` hint means nothing there.
+
+    Г3 of `plan_2026_10_22_pattern_grid`: the warning came from `build_job`, which cannot
+    tell a board from a pattern; `board=False` is how a pattern says which one it is. The
+    cell checks BOTH streams: the hint is a warning, and warnings go to stderr.
+    """
+    profile = _machine_files(tmp_path, profile_text, NO_SPOT)
+    target = tmp_path / f"{kind}.nc"
+    assert main(["pattern", kind, "--profile", str(profile), *options,
+                 "-o", str(target)]) == 0
+    captured = capsys.readouterr()
+    assert "--frame" not in captured.out
+    assert "--frame" not in captured.err
+
+
 def test_pattern_dose_prints_the_bottom_to_top_mapping(tmp_path, capsys,
                                                        profile_text):
     profile = _machine_files(tmp_path, profile_text, NO_SPOT)

@@ -280,6 +280,7 @@ def build_job(layer: Layer, machine: Machine, *, side: str = SIDE_TOP,
               power_bands: tuple[PowerBand, ...] = (),
               notes: tuple[str, ...] = (),
               frame: Layer | None = None,
+              board: bool = True,
               spot_compensation: bool = True,
               place_mm: tuple[float, float] = (0.0, 0.0)) -> Job:
     """Turn a layer into machine rows, applying the calibration and the limits.
@@ -295,6 +296,13 @@ def build_job(layer: Layer, machine: Machine, *, side: str = SIDE_TOP,
     Without it each side is mirrored and placed by its own copper: correct for ONE side
     (including copper at the bottom, ``--side bottom``), wrong for a second side of the
     same board — hence a warning, not a refusal.
+
+    ``board`` says whether the layer IS a board. A calibration pattern is not: it has no
+    second side, so the missing-frame warning would hand the operator a flag with nothing
+    to point at (the finding of the 22.10 run: ``pattern bars`` printed a board hint).
+    Pass ``board=False`` for a pattern. The header line ``frame: none (…)`` stays either
+    way: it states where the mirror axis and the placement came from, which is true for
+    both a board and a pattern.
     """
     _check_choice(side, SIDES, _("side"))
     _check_choice(process, PROCESSES, _("process"))
@@ -314,7 +322,7 @@ def build_job(layer: Layer, machine: Machine, *, side: str = SIDE_TOP,
 
     calibration = machine.calibration
     warnings: list[str] = list(machine.warnings)
-    if frame is None:
+    if frame is None and board:
         warnings.append(
             _("No common frame: the mirror and the placement use this layer's own copper; a second side of the same board needs --frame"))
 

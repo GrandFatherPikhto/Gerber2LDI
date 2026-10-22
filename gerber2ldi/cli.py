@@ -280,6 +280,7 @@ def _cmd_pattern(args: argparse.Namespace) -> int:
                            with_calibration=args.with_calibration)
         job = build_job(built.layer, built.machine, power=getattr(args, "power", None),
                         power_bands=built.bands, notes=built.notes,
+                        board=False,  # a pattern is not a board: no second side, no --frame
                         spot_compensation=args.with_compensation,
                         place_mm=args.place)
     except ValueError as bad:
