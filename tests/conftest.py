@@ -17,6 +17,8 @@ PROFILE_TEXT = """
 [machine]
 name = "test-machine"
 firmware = "grbl"
+steps_per_mm_x = 50
+steps_per_mm_y = 50
 
 [table]
 size_x_mm = 210

@@ -431,6 +431,17 @@ def build_job(layer: Layer, machine: Machine, *, side: str = SIDE_TOP,
         max(ink[2], frame_box[2]), max(ink[3], frame_box[3]))
     _check_table(machine, checked, overscan)
 
+    # A stepper cannot stop between its own microsteps: an edge shorter than one step
+    # lands on the nearest step instead, so a fine feature comes out coarse. COUNTED,
+    # not refused — a board has many such edges and refusing would block every job.
+    step_x = machine.motor.step_x_mm
+    short = sum(1 for row in rows for start, end in row.segments
+                if end - start < step_x)
+    if short:
+        warnings.append(
+            _("{count} segments are shorter than the X motor step {step} mm: their edges snap to it, so the exposed ends move by up to half a step")
+            .format(count=short, step=round(step_x, 4)))
+
     if radius is not None:
         period = machine.scan.speed_mm_s / machine.laser.pwm_hz
         if period > radius:

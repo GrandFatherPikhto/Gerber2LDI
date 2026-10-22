@@ -38,6 +38,11 @@ TWO_STRIPS = (HEADER + "%ADD10R,2.000000X2.000000*%\n%ADD11R,4.000000X2.000000*%
 THIN = (HEADER + "%ADD10R,10.000000X0.200000*%\n%LPD*%\nG01*\nD10*\n"
         "X5000000Y100000D03*\n" + FOOTER)
 
+# A 10 µm strip along Y: each row's segment is narrower than one microstep of the
+# fixture's machine (20 µm). Narrow in X on purpose — a segment is what snaps.
+NARROW = (HEADER + "%ADD10R,0.010000X2.000000*%\n%LPD*%\nG01*\nD10*\n"
+          "X5000000Y1000000D03*\n" + FOOTER)
+
 WIDE = (HEADER + "%ADD10R,205.000000X2.000000*%\n%LPD*%\nG01*\nD10*\n"
         "X102500000Y1000000D03*\n" + FOOTER)
 
@@ -251,6 +256,25 @@ def test_pwm_coarser_than_the_spot_warns(tmp_path, make_machine, profile_text):
 
     fast_enough = build_job(_layer(tmp_path, RECT, "slow.gbr"), make_machine(), power=0.5)
     assert not any("PWM period" in warning for warning in fast_enough.warnings)
+
+
+@pytest.mark.parametrize("steps_per_mm_x, expected", [("50", True), ("500", False)],
+                         ids=["20 um step", "2 um step"])
+def test_segments_shorter_than_the_motor_step_are_announced(tmp_path, make_machine,
+                                                            profile_text,
+                                                            steps_per_mm_x, expected):
+    """Г2: a 10 µm edge cannot land on a 20 µm microstep — it snaps to the nearest one.
+
+    Counted, not refused: a board is full of such edges. The 2 µm row is the control —
+    the same drawing, only the axis resolution differs, so the warning follows the
+    STEP and not the figure.
+    """
+    machine = make_machine(profile_text=profile_text.replace(
+        "steps_per_mm_x = 50", f"steps_per_mm_x = {steps_per_mm_x}"))
+    job = build_job(_layer(tmp_path, NARROW), machine, power=0.5,
+                    spot_compensation=False)
+    said = any("shorter than the X motor step" in warning for warning in job.warnings)
+    assert said is expected
 
 
 def test_erosion_that_removes_everything_refuses(tmp_path, make_machine):

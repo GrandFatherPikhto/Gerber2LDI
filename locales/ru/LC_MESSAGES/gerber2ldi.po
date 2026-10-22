@@ -364,3 +364,9 @@ msgstr "Медь выходит за рамку платы: x {x0} … {x1} пр
 
 msgid "board outline (Edge_Cuts) shared by both sides"
 msgstr "контур платы (Edge_Cuts), общий для обеих сторон"
+
+msgid "Profile {path}: scan.row_step_um = {row:g} um is not a whole number of motor steps along Y: machine.steps_per_mm_y = {per:g} step/mm gives a {step:g} um step, and {row:g} um is {count:g} of them — rows would land {low:g} and {high:g} um apart in turn"
+msgstr "Профиль {path}: scan.row_step_um = {row:g} мкм — не целое число шагов мотора по Y: machine.steps_per_mm_y = {per:g} шаг/мм даёт шаг {step:g} мкм, а {row:g} мкм — это {count:g} шага; строки легли бы через {low:g} и {high:g} мкм попеременно"
+
+msgid "{count} segments are shorter than the X motor step {step} mm: their edges snap to it, so the exposed ends move by up to half a step"
+msgstr "Отрезков короче шага мотора по X ({step} мм): {count}; их края прилипают к шагу, и концы засветки уезжают до половины шага"

@@ -34,6 +34,9 @@
 [machine]
 name = "china-ldi"
 firmware = "grbl"            # grbl | grblhal | fluidnc
+steps_per_mm_x = 80          # $100 = 80 step/mm: one microstep is 12.5 um
+steps_per_mm_y = 80          # $101 = 80 step/mm: row_step_um must be a WHOLE number
+                             # of these steps, or the rows alternate apart (banding)
 
 [table]
 size_x_mm = 210              # $130 = 210 (X travel)
@@ -49,8 +52,9 @@ pwm_hz = 1000                # MEASURE: firmware PWM frequency (the "PWM draws d
 
 [scan]
 scan_axis = "x"              # MEASURE: which axis scans
-row_step_um = 25             # a whole number of Y steps: $101 = 80 step/mm -> 12.5 um/step;
-                             # 20 um would land rows 12.5/25 um apart in turn (banding)
+row_step_um = 25             # 25 um = 2 steps of $101 = 80 step/mm (12.5 um). 20 um would be
+                             # 1.6 steps: rows 12.5 and 25 um apart in turn, and the
+                             # profile is refused with those numbers
 speed_mm_s = 50              # $110 = 5000 mm/min (83 mm/s) is the ceiling
 overscan_mm = 8              # v^2/(2a) = 50^2/(2*250, $120) = 5 mm to full speed, plus margin
 bidirectional = false        # start with one direction (design §4.3)

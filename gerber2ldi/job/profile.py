@@ -18,6 +18,13 @@ Units: the file speaks micrometres for the small lengths (``row_step_um``,
 measured; everything leaving this module is MILLIMETRES as float, like the rest
 of the core.
 
+THE MOTOR DECIDES THE ROW STEP. ``[machine] steps_per_mm_x/y`` are ``$100/$101``:
+how many microsteps the controller counts per millimetre. A row step that is not a
+whole number of those steps cannot be walked — 20 µm rows on a 12.5 µm step land
+12.5 and 25 µm apart in turn and band the exposure (found by hand on 22.10, so it
+is refused here with the numbers). The axis steps are a property of the MACHINE,
+the row step is a property of the SCAN, hence the two sections.
+
 A missing calibration file is NOT a refusal: the machine works without it, scale 1
 and skew 0, with a warning string. A missing spot radius blocks only the spot
 compensation, and the caller says so explicitly (Ш4: ``--no-spot-compensation``) —
@@ -50,6 +57,13 @@ double the size of every feature once the sign of the mistake is right. Refusing
 beats silently scaling a board by 100×.
 """
 
+STEP_TOLERANCE = 1e-6
+"""How far ``row_step_um`` may sit from a whole number of microsteps, in STEPS.
+
+The file holds numbers, not measurements, so this only absorbs float noise
+(25 µm · 80 step/mm / 1000 = 2.0000000000000004); a genuine half step is a refusal.
+"""
+
 ORIGINS = ("front-left", "front-right", "back-left", "back-right")
 SCAN_AXES = ("x", "y")
 
@@ -80,6 +94,35 @@ class Scan:
 
 
 @dataclass(frozen=True, slots=True)
+class Motor:
+    """Axis resolution as the firmware counts it (``$100``/``$101``).
+
+    ``steps_per_mm`` is what the controller has been TOLD, not a measurement of the
+    travel: the travel is ``calibration.scale_x/y``. This one answers a different
+    question — which positions can be commanded at all.
+    """
+
+    steps_per_mm_x: float
+    steps_per_mm_y: float
+
+    @property
+    def step_x_um(self) -> float:
+        return UM_PER_MM / self.steps_per_mm_x
+
+    @property
+    def step_y_um(self) -> float:
+        return UM_PER_MM / self.steps_per_mm_y
+
+    @property
+    def step_x_mm(self) -> float:
+        return 1.0 / self.steps_per_mm_x
+
+    @property
+    def step_y_mm(self) -> float:
+        return 1.0 / self.steps_per_mm_y
+
+
+@dataclass(frozen=True, slots=True)
 class Calibration:
     """Measured on THIS machine; the defaults mean "not measured"."""
 
@@ -97,6 +140,7 @@ class Machine:
     table: Table
     laser: Laser
     scan: Scan
+    motor: Motor
     calibration: Calibration
     source: Path
     warnings: tuple[str, ...] = field(default=())
@@ -175,6 +219,25 @@ def _read_toml(path: Path, kind: str) -> dict:
         message = (_("Cannot read profile {path}: {error}") if kind == "profile"
                    else _("Cannot read calibration {path}: {error}"))
         raise ProfileError(message.format(path=path, error=exc)) from exc
+
+
+def _check_row_step(row_step_um: float, motor: Motor, path: Path) -> None:
+    """The row step must be a whole number of microsteps, or the rows alternate apart.
+
+    The trap of 22.10: 20 µm rows on a ``$101 = 80`` step/mm machine (12.5 µm per step)
+    put consecutive rows 12.5 and 25 µm apart in turn, and the exposure came out banded.
+    A stepper can only stop on its own microsteps, so a fractional step count is not a
+    tuning choice — it is a different row grid from row to row.
+    """
+    steps = row_step_um * motor.steps_per_mm_y / UM_PER_MM
+    if abs(steps - round(steps)) <= STEP_TOLERANCE:
+        return
+    low = math.floor(steps) * motor.step_y_um
+    high = math.ceil(steps) * motor.step_y_um
+    raise ProfileError(
+        _("Profile {path}: scan.row_step_um = {row:g} um is not a whole number of motor steps along Y: machine.steps_per_mm_y = {per:g} step/mm gives a {step:g} um step, and {row:g} um is {count:g} of them — rows would land {low:g} and {high:g} um apart in turn")
+        .format(path=path, row=row_step_um, per=motor.steps_per_mm_y,
+                step=motor.step_y_um, count=round(steps, 3), low=low, high=high))
 
 
 # ─────────────────────────────── public API ────────────────────────────────
@@ -269,6 +332,12 @@ def load_profile(path: str | Path) -> Machine:
     if not isinstance(name, str) or not name.strip():
         _fail(source, "machine.name", "a non-empty string", name)
     firmware = _choice(machine, "firmware", source, "machine", FIRMWARE_DIALECTS)
+    # Mandatory: without the axis resolution the row step cannot be checked against
+    # the microsteps, and a silently banded exposure looks like a resist problem.
+    motor = Motor(
+        steps_per_mm_x=_number(machine, "steps_per_mm_x", source, "machine", positive=True),
+        steps_per_mm_y=_number(machine, "steps_per_mm_y", source, "machine", positive=True),
+    )
 
     table = _section(document, "table", source)
     size_x = _number(table, "size_x_mm", source, "table", positive=True)
@@ -286,7 +355,8 @@ def load_profile(path: str | Path) -> Machine:
 
     scan = _section(document, "scan", source)
     axis = _choice(scan, "scan_axis", source, "scan", SCAN_AXES)
-    row_step_mm = _number(scan, "row_step_um", source, "scan", positive=True) / UM_PER_MM
+    row_step_um = _number(scan, "row_step_um", source, "scan", positive=True)
+    row_step_mm = row_step_um / UM_PER_MM
     speed = _number(scan, "speed_mm_s", source, "scan", positive=True)
     overscan = _number(scan, "overscan_mm", source, "scan", non_negative=True)
     bidirectional = _boolean(scan, "bidirectional", source, "scan")
@@ -298,6 +368,8 @@ def load_profile(path: str | Path) -> Machine:
     if bidirectional:
         _fail(source, "scan.bidirectional",
               "false (two-direction scanning is not implemented)", bidirectional)
+    # The scan steps along Y, so the Y resolution is what the row step must fit.
+    _check_row_step(row_step_um, motor, source)
 
     calibration_file = calibration_path(source)
     calibration = load_calibration(calibration_file)
@@ -325,6 +397,7 @@ def load_profile(path: str | Path) -> Machine:
                     usable_fraction=usable, s_max=s_max, pwm_hz=pwm_hz),
         scan=Scan(scan_axis=axis, row_step_mm=row_step_mm, speed_mm_s=speed,
                   overscan_mm=overscan, bidirectional=bidirectional),
+        motor=motor,
         calibration=calibration,
         source=source,
         warnings=tuple(warnings),

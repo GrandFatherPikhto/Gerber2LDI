@@ -9,6 +9,8 @@ Cells closed here:
     нет секции                  отказ называет секцию
     нет поля                    отказ называет поле
     вне диапазона               usable_fraction 0 и 1.5, стол 0, прошивка, ось
+    шаг мотора                  $100/$101 обязательны, шаг строки — целое число шагов по Y
+    шаг строки мимо шагов       отказ с числами, полем и файлом; настоящий профиль — тоже
     калибровки нет              scale 1, skew 0, пятно None, предупреждение строкой
     калибровка есть             значения и дата читаются, мкм → мм
     пятно 0 = не измерено       None и предупреждение
@@ -21,6 +23,7 @@ Cells closed here:
 пишется комментарием.
 """
 from datetime import date
+from pathlib import Path
 
 import pytest
 
@@ -31,6 +34,8 @@ PROFILE = """
 [machine]
 name = "test-machine"
 firmware = "grbl"
+steps_per_mm_x = 50
+steps_per_mm_y = 50
 
 [table]
 size_x_mm = 210
@@ -119,6 +124,12 @@ def test_broken_toml_is_a_refusal(tmp_path):
 BAD_PROFILE_CELLS = [
     ("missing section", "[machine]", "[machin]", "section is required"),
     ("missing field", "row_step_um = 20", "", "scan.row_step_um is required"),
+    # The motor resolution is mandatory: without it the row step cannot be checked
+    # against the microsteps, and a banded exposure looks like a resist problem (Г2).
+    ("missing motor steps", "steps_per_mm_x = 50", "", "machine.steps_per_mm_x is required"),
+    ("zero motor steps", "steps_per_mm_y = 50", "steps_per_mm_y = 0", "machine.steps_per_mm_y"),
+    ("negative motor steps", "steps_per_mm_y = 50", "steps_per_mm_y = -80",
+     "machine.steps_per_mm_y"),
     ("usable_fraction zero", "usable_fraction = 0.8", "usable_fraction = 0.0",
      "laser.usable_fraction"),
     ("usable_fraction above one", "usable_fraction = 0.8", "usable_fraction = 1.5",
@@ -148,6 +159,74 @@ def test_bad_profile_is_refused_and_names_the_field(tmp_path, name, old, new, ex
     path = _write(tmp_path, text)
     with pytest.raises(ProfileError, match=expected):
         load_profile(path)
+
+
+def _with_motor(text: str, steps_per_mm_y: str, row_step_um: str) -> str:
+    """The profile text with the Y resolution and the row step replaced."""
+    return (text.replace("steps_per_mm_y = 50", f"steps_per_mm_y = {steps_per_mm_y}")
+            .replace("row_step_um = 20", f"row_step_um = {row_step_um}"))
+
+
+ROW_STEP_WHOLE_CELLS = [
+    (80, "25", 0.025),     # 2 steps of 12.5 µm: the shipped machine
+    (80, "12.5", 0.0125),  # exactly one microstep
+    (50, "20", 0.02),      # the fixture's machine
+]
+
+
+@pytest.mark.parametrize("steps_per_mm_y, row_step_um, expected_mm", ROW_STEP_WHOLE_CELLS,
+                         ids=["80 step/mm, 25 um = 2 steps",
+                              "80 step/mm, 12.5 um = 1 step",
+                              "50 step/mm, 20 um = 1 step"])
+def test_a_row_step_of_whole_motor_steps_is_accepted(tmp_path, steps_per_mm_y,
+                                                     row_step_um, expected_mm):
+    """Г2: a stepper can only stop on its own microsteps, so a whole count passes."""
+    machine = load_profile(_write(
+        tmp_path, _with_motor(PROFILE, steps_per_mm_y, row_step_um)))
+    assert machine.scan.row_step_mm == pytest.approx(expected_mm)
+    assert machine.motor.step_y_mm == pytest.approx(1.0 / steps_per_mm_y)
+
+
+@pytest.mark.parametrize("steps_per_mm_y, row_step_um", [(80, "20"), (80, "26")],
+                         ids=["1.6 steps", "2.08 steps"])
+def test_a_row_step_off_the_motor_steps_is_refused(tmp_path, steps_per_mm_y, row_step_um):
+    """Г2: 20 µm on a 12.5 µm step puts the rows 12.5 and 25 µm apart in turn.
+
+    The banding was found by hand on 22.10 and looks exactly like a resist problem, so
+    the profile refuses it and gives both numbers; the cell checks that the refusal
+    names the FIELD and the FILE.
+    """
+    path = _write(tmp_path, _with_motor(PROFILE, steps_per_mm_y, row_step_um))
+    with pytest.raises(ProfileError, match="not a whole number of motor steps"):
+        load_profile(path)
+    with pytest.raises(ProfileError, match="scan.row_step_um"):
+        load_profile(path)
+    with pytest.raises(ProfileError, match=str(path)):
+        load_profile(path)
+
+
+def test_the_shipped_profile_row_step_is_whole_motor_steps(tmp_path):
+    """Г2 on the REAL machine, not on an invented one: $101 = 80, rows of 25 µm.
+
+    Денис, 22.10: «иначе сторож проверен только на выдуманном станке». The fixture's
+    machine is a different, honest one (50 step/mm); this cell holds the one whose
+    row step was measured.
+    """
+    shipped = Path(__file__).resolve().parents[1] / "profiles" / "china_ldi_grbl.toml"
+    text = shipped.read_text()
+    assert "row_step_um = 25" in text, "this cell is the 2-steps case"
+    machine = load_profile(shipped)
+    assert machine.motor.steps_per_mm_x == 80
+    assert machine.motor.steps_per_mm_y == 80
+    assert machine.motor.step_y_mm == pytest.approx(0.0125)
+    assert machine.scan.row_step_mm == pytest.approx(0.025)
+    # The same profile with the row step that banded the exposure by hand.
+    broken = tmp_path / shipped.name
+    broken.write_text(text.replace("row_step_um = 25", "row_step_um = 20"))
+    with pytest.raises(ProfileError, match="scan.row_step_um"):
+        load_profile(broken)
+    with pytest.raises(ProfileError, match=str(broken)):
+        load_profile(broken)
 
 
 def test_missing_calibration_is_not_a_refusal(tmp_path):

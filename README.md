@@ -65,8 +65,18 @@ documentation, not from a run here.*
 ### 2. Profile and calibration
 
 `profiles/china_ldi_grbl.toml` is a starting point: copy it, then change the table
-size, `scan.row_step_um`, `scan.speed_mm_s`, `scan.overscan_mm`, `laser.s_max`,
-`laser.usable_fraction`. The profile describes a TYPE of machine and is in git.
+size, `machine.steps_per_mm_x/y`, `scan.row_step_um`, `scan.speed_mm_s`,
+`scan.overscan_mm`, `laser.s_max`, `laser.usable_fraction`. The profile describes a
+TYPE of machine and is in git.
+
+`machine.steps_per_mm_x` and `_y` are your `$$` answer, `$100` and `$101`: how many
+microsteps the controller counts per millimetre. They are mandatory, because
+`scan.row_step_um` must be a WHOLE number of microsteps along Y. On `$101 = 80`
+step/mm one microstep is 12.5 µm: 25 µm rows are 2 steps, and 20 µm rows are 1.6 —
+such a profile is **refused** with both numbers, because the rows would land 12.5 and
+25 µm apart in turn and the exposure comes out banded. Edges shorter than one
+microstep along X are not refused: the job counts them and says so in one line,
+because their ends snap to the nearest step.
 
 The measured error of your instance lives next to it, in
 `profiles/<name>.calibration.toml`:

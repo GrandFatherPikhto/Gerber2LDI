@@ -19,12 +19,18 @@ ScanRow                          — неизменяемая
 ## Профиль станка — `profiles/<имя>.toml`, в git (Ш3) — ТИП станка
 
 ```
-[machine]      name, firmware (grbl | grblhal | fluidnc | …)
+[machine]      name, firmware (grbl | grblhal | fluidnc | …), steps_per_mm_x ($100),
+               steps_per_mm_y ($101) — шаг мотора
 [table]        size_x_mm, size_y_mm, origin
 [laser]        wavelength_nm, power_w (ОПТИЧЕСКАЯ), usable_fraction (0..1, жёсткий потолок),
                s_max ($30), pwm_hz
-[scan]         scan_axis, row_step_um, speed_mm_s, overscan_mm, bidirectional
+[scan]         scan_axis, row_step_um (ЦЕЛОЕ число шагов мотора по Y), speed_mm_s,
+               overscan_mm, bidirectional
 ```
+
+`row_step_um` не целое число шагов по Y — отказ с обоими числами (например, 20 мкм при
+`$101 = 80`: шаг мотора 12.5 мкм, 20 мкм = 1.6 шага, строки легли бы 12.5/25 мкм
+попеременно). Отрезки короче шага мотора по X — предупреждение, не отказ.
 
 ## Калибровка — `profiles/<имя>.calibration.toml`, в git (Ш3) — ЭКЗЕМПЛЯР станка
 
