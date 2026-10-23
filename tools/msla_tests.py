@@ -6,7 +6,7 @@ WHY THIS IS NOT A PACKAGE COMMAND. The laser chain (rows, run-up, `S`) has nothi
 do with an LCD mask: the printer exposes a WHOLE LAYER at once, so the only thing that
 matters is which PIXELS are lit. One pixel is the finest edge the machine can produce,
 so every dimension here is snapped to whole pixels and the report says what the snap
-cost: a requested 0.100 mm line on a 34.4 um pixel is 3 px = 0.1032 mm, and that is the
+cost: a requested 0.100 mm line on a 34 um pixel is 3 px = 0.102 mm, and that is the
 width to expect on the plate.
 
 TWO AXES, TWO PIXEL SIZES. `--pixel-um PXxPY` describes one pixel on each axis, because
@@ -30,22 +30,32 @@ White is an exposed pixel. By default the LINES are white (a negative resist kee
 the light touched); `--invert` swaps the two. `--mirror` reflects the finished picture
 along X, for a resist that faces the screen.
 
+MARKER (on by default). Every figure carries the letter F, 2 mm on a side with 3 px
+lines, in its TOP-LEFT corner, and the pattern starts to its right. The F is asymmetric
+in BOTH axes on purpose: a mirrored exposure puts the stem on the right, an upside-down
+one puts the arms at the bottom, and either is visible on the developed plate without a
+microscope — which is the only way to tell afterwards whether the resist faced the
+screen. `--no-marker` turns it off (a mask whose own numbers are measured from the
+corner of the pattern does not want the extra ink).
+
 Standard library + `numpy` + `Pillow` only, and `gerber2ldi` is NOT imported: this tool
 must work where the laser package cannot even be installed. Messages are ASCII English
 ("um", not "µm") because they also travel into the PNG text chunk.
 
 Usage:
     .venv/bin/python tools/msla_tests.py bars --screen-px 5760x3600 \\
-        --pixel-um 34.4x34.4 -o out/bars.png \\
+        --pixel-um 34x34 -o out/bars.png \\
         [--widths-mm 0.2,0.15,0.1,0.08,0.06,0.05] [--lines 5] \\
-        [--at X,Y] [--mirror] [--invert]
+        [--at X,Y] [--mirror] [--invert] [--marker|--no-marker]
     .venv/bin/python tools/msla_tests.py grid --screen-px 5760x3600 \\
-        --pixel-um 34.4x34.4 -o out/grid.png \\
+        --pixel-um 34x34 -o out/grid.png \\
         [--width-mm 50 --height-mm 40 --line-mm 0.2 --gap-mm 0.15] \\
-        [--direction both|x|y] [--at X,Y] [--mirror] [--invert]
+        [--direction both|x|y] [--at X,Y] [--mirror] [--invert] [--marker|--no-marker]
 
-`--screen-px` and `--pixel-um` are REQUIRED and have no defaults: the spec sheet of the
-X6Ks is not verified, and an invented number is worse than a refusal.
+`--screen-px` and `--pixel-um` are REQUIRED and have no defaults: an invented number is
+worse than a refusal. For the Anycubic Photon Mono X 6Ks the printer profile in UVtools
+(and PrusaSlicer's `Anycubic Photon Mono X 6Ks.ini`) says 195.84 x 122.4 mm over
+5760 x 3600 px, i.e. 34 um per pixel — that is a profile, not a verified spec sheet.
 
 The report printed on stdout is also written into the PNG text chunk `msla_tests`, so a
 file found a month later still says what it is: screen, pixel, pattern, widths requested
@@ -75,6 +85,13 @@ DEFAULT_GRID_LINE_MM = 0.2
 DEFAULT_GRID_GAP_MM = 0.15
 BLOCK_GAP_MM = 2.0
 """Physical gap between the horizontal and the vertical block of `bars`, in mm."""
+
+MARKER_MM = 2.0
+"""Side of the marker square in millimetres. Its pixel count follows each axis."""
+MARKER_LINE_PX = 3
+"""Stem and arm width of the marker in PIXELS: below ~100 um a line disappears in development."""
+MARKER_GAP_MM = 1.0
+"""Gap between the marker and the pattern, in millimetres — they must not touch."""
 
 
 class Refusal(Exception):
@@ -265,6 +282,56 @@ def build_grid(screen: Screen, width_mm: float, height_mm: float, line_mm: float
     return Figure(pixels=figure, report=tuple(report))
 
 
+# ───────────────────────────────── marker ──────────────────────────────────
+
+def marker_pixels(screen: Screen) -> np.ndarray:
+    """The letter F in whole pixels: stem on the left, arms to the top-right.
+
+    Asymmetric in BOTH axes on purpose — that is the whole point of it: a mirrored
+    exposure puts the stem on the right, an upside-down one puts the arms at the bottom,
+    and both are read off the developed plate by eye, without a microscope.
+    """
+    width = _quantised(MARKER_MM, screen.pixel_x_mm, "X", "the marker side")
+    height = _quantised(MARKER_MM, screen.pixel_y_mm, "Y", "the marker side")
+    if width < 3 * MARKER_LINE_PX or height < 2 * MARKER_LINE_PX:
+        raise Refusal(
+            f"the pixel is too coarse for the marker: a {MARKER_MM:.1f} mm side is "
+            f"{width} x {height} px, the F needs {3 * MARKER_LINE_PX} px across and "
+            f"{2 * MARKER_LINE_PX} px down of {MARKER_LINE_PX} px lines (use --no-marker)")
+    pixels = np.zeros((height, width), dtype=np.uint8)
+    pixels[:, 0:MARKER_LINE_PX] = WHITE                     # the stem
+    pixels[0:MARKER_LINE_PX, 0:width] = WHITE               # the top arm, full length
+    middle = height // 2
+    arm = max(MARKER_LINE_PX, width * 7 // 10)              # the middle arm, shorter
+    pixels[middle:middle + MARKER_LINE_PX, 0:arm] = WHITE
+    return pixels
+
+
+def add_marker(screen: Screen, figure: Figure) -> Figure:
+    """Put the F at the top-left corner of the figure; the pattern moves right of it.
+
+    The pattern keeps its own geometry — same rows, same blocks, same widths — it only
+    moves. A marker drawn ON the pattern would corrupt exactly what the pattern measures.
+    """
+    marker = marker_pixels(screen)
+    marker_height, marker_width = int(marker.shape[0]), int(marker.shape[1])
+    gap = _quantised(MARKER_GAP_MM, screen.pixel_x_mm, "X", "the marker gap")
+    pixels = np.zeros((max(figure.height_px, marker_height),
+                       marker_width + gap + figure.width_px), dtype=np.uint8)
+    pixels[0:marker_height, 0:marker_width] = marker
+    pixels[0:figure.height_px, marker_width + gap:] = figure.pixels
+    report = figure.report + (
+        f"marker: the letter F in the top-left corner of the figure, {marker_width} x "
+        f"{marker_height} px = {screen.mm_x(marker_width):.3f} x "
+        f"{screen.mm_y(marker_height):.3f} mm, line {MARKER_LINE_PX} px; the pattern "
+        f"starts {gap} px = {screen.mm_x(gap):.3f} mm to its right",
+        "marker: on a straight exposure the stem is on the LEFT and the arms point to the "
+        "top-right; a mirrored one puts the stem on the RIGHT, an upside-down one puts the "
+        "arms at the bottom",
+    )
+    return Figure(pixels=pixels, report=report)
+
+
 # ──────────────────────────── placement and output ─────────────────────────
 
 def compose(screen: Screen, figure: Figure, at_mm: tuple[float, float] | None,
@@ -436,6 +503,10 @@ def build_parser() -> argparse.ArgumentParser:
                           help="reflect the whole picture along X (a resist facing the screen)")
         kind.add_argument("--invert", action="store_true",
                           help="white = the gaps instead of the lines")
+        kind.add_argument("--marker", action=argparse.BooleanOptionalAction, default=True,
+                          help="draw the letter F in the top-left corner of the figure, so a "
+                               "mirrored or upside-down exposure is visible on the plate "
+                               "(--no-marker turns it off)")
 
     bars_parser = kinds.add_parser(
         "bars", help="lines and gaps of known widths, horizontal and vertical blocks",
@@ -487,6 +558,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         screen = _screen(args)
         figure = args.handler(args, screen)
+        if args.marker:
+            figure = add_marker(screen, figure)
         image, placed = compose(screen, figure, args.at,
                                 mirror=args.mirror, invert=args.invert)
         target = write_mask(args.output, screen, figure, image, placed)

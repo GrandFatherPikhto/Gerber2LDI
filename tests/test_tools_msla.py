@@ -15,6 +15,8 @@ Cells:
     grid край               линия у края: влезает целиком / не влезает на один пиксель
     grid both               объединение `x` и `y`
     зеркало и полярность    --mirror = np.fliplr от прямой, --invert = 255 − прямая
+    метка                   F несимметрична по X и по Y, стоит в углу рисунка по
+                            умолчанию, узор только сдвигается вправо, с --mirror отражена
     отказы                  ширина меньше пикселя; рисунок за экран (мм и пиксели);
                             нет --screen-px / --pixel-um
     одинаковые группы       две ширины в одно n — предупреждение; разные n — тишина
@@ -33,8 +35,10 @@ from PIL import Image
 
 SCRIPT = Path(__file__).resolve().parents[1] / "tools" / "msla_tests.py"
 
-# A 200 x 120 screen at 34.4 um per pixel: 6.88 x 4.13 mm, enough for the small bars.
-SCREEN = ("--screen-px", "200x120")
+# A 240 x 120 screen at 34.4 um per pixel: 8.26 x 4.13 mm — enough for the small bars
+# AND for the 2 mm marker that is on by default.
+SCREEN = ("--screen-px", "240x120")
+SCREEN_WIDTH_PX = 240
 SQUARE_PIXEL = ("--pixel-um", "34.4x34.4")
 # 34.4 um across and 30.0 um down: the same width is 6 px along X and 7 px along Y.
 RECT_PIXEL = ("--pixel-um", "34.4x30.0")
@@ -93,7 +97,7 @@ def test_the_mask_is_the_screen_in_two_values(tmp_path):
                   "--widths-mm", "0.2,0.1", "--lines", "2")
     image = Image.open(target)
     assert image.mode == "L"
-    assert image.size == (200, 120), "the PNG must be exactly the screen"
+    assert image.size == (240, 120), "the PNG must be exactly the screen"
     assert set(np.unique(_pixels(target)).tolist()) == {0, 255}
 
 
@@ -105,7 +109,7 @@ def test_a_width_is_whole_pixels_of_its_own_axis(tmp_path):
     `--at 0,0` puts the figure corner on the PNG corner, so the runs are readable.
     """
     target = _run(tmp_path, "bars", *SCREEN, *RECT_PIXEL, "--widths-mm", "0.2,0.1",
-                  "--lines", "2", "--at", "0,0")
+                  "--lines", "2", "--at", "0,0", "--no-marker")
     array = _pixels(target)
 
     column = _runs_of_figure(array[:, 0])
@@ -125,7 +129,7 @@ def test_a_width_is_whole_pixels_of_its_own_axis(tmp_path):
 def test_a_group_has_as_many_lines_as_asked_and_the_gap_equals_the_width(tmp_path, lines):
     """One group of `--lines` lines: every white run is the width, every gap too."""
     target = _run(tmp_path, "bars", *SCREEN, *SQUARE_PIXEL, "--widths-mm", "0.2",
-                  "--lines", str(lines), "--at", "0,0")
+                  "--lines", str(lines), "--at", "0,0", "--no-marker")
     column = _runs_of_figure(_pixels(target)[:, 0])
     assert [length for value, length in column if value == 255] == [6] * lines
     assert [length for value, length in column if value == 0] == [6] * (lines - 1)
@@ -147,7 +151,8 @@ def test_the_last_line_is_drawn_only_whole(tmp_path, capsys, height_mm, expected
     """
     target = _run(tmp_path, "grid", *SCREEN, "--pixel-um", "100x100",
                   "--width-mm", "1", "--height-mm", height_mm,
-                  "--line-mm", "0.2", "--gap-mm", "0.1", "--direction", "x", "--at", "0,0")
+                  "--line-mm", "0.2", "--gap-mm", "0.1", "--direction", "x",
+                  "--at", "0,0", "--no-marker")
     out = capsys.readouterr().out
     assert f"lines: along X {expected}" in out
     rect_y = int(round(float(height_mm) / 0.1))  # 100 um pixels
@@ -162,7 +167,7 @@ def test_both_directions_are_the_union_of_the_two(tmp_path):
         masks[direction] = _pixels(_run(
             tmp_path, "grid", *SCREEN, "--pixel-um", "100x100",
             "--width-mm", "1", "--height-mm", "1", "--line-mm", "0.2",
-            "--gap-mm", "0.1", "--direction", direction, "--at", "0,0",
+            "--gap-mm", "0.1", "--direction", direction, "--at", "0,0", "--no-marker",
             name=f"{direction}.png"))
     assert masks["x"].any() and masks["y"].any()
     assert not np.array_equal(masks["x"], masks["y"])
@@ -234,7 +239,7 @@ def test_the_png_remembers_what_it_is(tmp_path):
     target = _run(tmp_path, "bars", *SCREEN, *RECT_PIXEL, "--widths-mm", "0.2",
                   "--lines", "2")
     text = Image.open(target).text["msla_tests"]
-    assert "screen: 200 x 120 px" in text
+    assert "screen: 240 x 120 px" in text
     assert "pixel: 34.40 x 30.00 um" in text
     assert "0.200 mm -> 7 px along Y = 210.0 um, 6 px along X = 206.4 um" in text
     assert "mirror: off" in text
@@ -247,3 +252,64 @@ def test_the_mirrored_file_says_it_is_mirrored(tmp_path):
                   "--lines", "2", "--mirror")
     text = Image.open(target).text["msla_tests"]
     assert "mirror: on" in text
+
+
+def _marker(screen_px: int = SCREEN_WIDTH_PX) -> np.ndarray:
+    return msla.marker_pixels(msla.Screen(screen_px, 120, 34.4, 34.4))
+
+
+def test_the_marker_is_a_letter_f_asymmetric_in_both_axes():
+    """A symmetric mark would not tell a mirrored exposure from an upside-down one.
+
+    The reading key is the shape itself: the stem on the left, the arms to the top-right.
+    """
+    marker = _marker(5760)
+    assert marker.any(), "the marker must draw something"
+    assert not np.array_equal(marker, np.fliplr(marker)), "a mirrored F must differ"
+    assert not np.array_equal(marker, np.flipud(marker)), "an upside-down F must differ"
+    assert int(marker[:, 0].sum()) > int(marker[:, -1].sum()), "the stem is on the left"
+    assert int(marker[0, :].sum()) > int(marker[-1, :].sum()), "the arms are at the top"
+
+
+def test_the_marker_is_on_by_default_and_the_pattern_only_moves_right(tmp_path):
+    """The mark must not be drawn ON the pattern: it would corrupt what the pattern measures."""
+    arguments = ("bars", *SCREEN, *SQUARE_PIXEL, "--widths-mm", "0.2", "--lines", "2",
+                 "--at", "0,0")
+    plain = _pixels(_run(tmp_path, *arguments, name="plain.png"))
+    bare = _pixels(_run(tmp_path, *arguments, "--no-marker", name="bare.png"))
+    marker = _marker()
+    marker_height, marker_width = marker.shape
+    gap = int(round(msla.MARKER_GAP_MM / 0.0344))
+
+    assert not np.array_equal(plain, bare), "the marker is on by default"
+    assert np.array_equal(plain[:marker_height, :marker_width], marker)
+    assert not plain[:marker_height, marker_width:marker_width + gap].any(), "a gap, not a touch"
+    shift = marker_width + gap
+    assert np.array_equal(plain[:, shift:], bare[:, :-shift]), "the pattern only moved right"
+
+
+def test_the_marker_moves_with_the_mirror(tmp_path):
+    """The picture is reflected as a whole: the F is found MIRRORED, on the other side.
+
+    Mirroring reverses the order of the parts, so the marker that sat at the figure's
+    left ends up at the figure's right: column ``x`` goes to ``width − 1 − x``.
+    """
+    arguments = ("bars", *SCREEN, *SQUARE_PIXEL, "--widths-mm", "0.2", "--lines", "2",
+                 "--at", "0,0")
+    plain = _pixels(_run(tmp_path, *arguments, name="plain.png"))
+    mirrored = _pixels(_run(tmp_path, *arguments, "--mirror", name="mirrored.png"))
+    marker = _marker()
+    marker_height, marker_width = marker.shape
+    figure_left = int(np.nonzero(plain.any(axis=0))[0][0])
+    left = SCREEN_WIDTH_PX - figure_left - marker_width
+    found = mirrored[:marker_height, left:left + marker_width]
+    assert np.array_equal(found, np.fliplr(marker))
+    assert not np.array_equal(found, marker), "the reflected F must not read as straight"
+
+
+def test_the_report_says_where_the_marker_is_and_how_to_read_it(tmp_path, capsys):
+    _run(tmp_path, "bars", *SCREEN, *SQUARE_PIXEL, "--widths-mm", "0.2", "--lines", "2")
+    out = capsys.readouterr().out
+    assert "marker: the letter F in the top-left corner of the figure" in out
+    assert "the pattern starts" in out
+    assert "stem is on the LEFT" in out

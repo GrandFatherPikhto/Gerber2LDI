@@ -317,19 +317,25 @@ pixels and has to say what the requested width actually became. `tools/msla_test
 does that; it is not part of the laser chain and does not import the package.
 
 ```sh
-.venv/bin/python tools/msla_tests.py bars --screen-px 5760x3600 --pixel-um 34.4x34.4 \
+.venv/bin/python tools/msla_tests.py bars --screen-px 5760x3600 --pixel-um 34x34 \
     -o out/bars.png --widths-mm 0.2,0.15,0.1,0.08,0.06,0.05
-.venv/bin/python tools/msla_tests.py grid --screen-px 5760x3600 --pixel-um 34.4x34.4 \
+.venv/bin/python tools/msla_tests.py grid --screen-px 5760x3600 --pixel-um 34x34 \
     -o out/grid.png --width-mm 50 --height-mm 40 --line-mm 0.2 --gap-mm 0.15
 ```
 
-* `--screen-px` and `--pixel-um` are **mandatory**: this page does not know the printer's
-  spec, and an invented number is worse than a refusal. A pixel may be not square — two
-  sizes, one per axis.
+* `--screen-px` and `--pixel-um` are **mandatory**: an invented number is worse than a
+  refusal. For the Anycubic Photon Mono X 6Ks the printer profile in UVtools (and
+  PrusaSlicer's `Anycubic Photon Mono X 6Ks.ini`) says 195.84 × 122.4 mm over
+  5760 × 3600 px, i.e. **34 µm per pixel** — that is a profile, not a verified spec sheet.
+  A pixel may be not square: two sizes, one per axis.
 * every width becomes `n = round(width / pitch)` pixels of its OWN axis, and the report
-  prints the requested width beside the ACTUAL one: a 0.100 mm line on a 34.4 um pixel is
-  3 px = 0.1032 mm, and 0.080 mm is 2 px = 0.0688 mm. That actual number is the one to
+  prints the requested width beside the ACTUAL one: a 0.100 mm line on a 34 um pixel is
+  3 px = 0.102 mm, and 0.080 mm is 2 px = 0.068 mm. That actual number is the one to
   expect on the plate.
+* every figure carries the letter **F** in its top-left corner (2 mm, 3 px lines) and the
+  pattern starts to its right: the F is asymmetric in both axes, so a mirrored exposure
+  (the stem on the right) or an upside-down one (the arms at the bottom) is visible on the
+  plate without a microscope. `--no-marker` turns it off.
 * a width below half a pixel is a refusal; two widths that land on the same `n` are
   announced, because their groups will be identical;
 * `bars` — groups of lines with the gap equal to the line width: a horizontal block (the
