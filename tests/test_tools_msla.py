@@ -33,7 +33,8 @@ import numpy as np
 import pytest
 from PIL import Image
 
-SCRIPT = Path(__file__).resolve().parents[1] / "tools" / "msla_tests.py"
+TOOLS = Path(__file__).resolve().parents[1] / "tools"
+SCRIPT = TOOLS / "msla_tests.py"
 
 # A 240 x 120 screen at 34.4 um per pixel: 8.26 x 4.13 mm — enough for the small bars
 # AND for the 2 mm marker that is on by default.
@@ -44,21 +45,25 @@ SQUARE_PIXEL = ("--pixel-um", "34.4x34.4")
 RECT_PIXEL = ("--pixel-um", "34.4x30.0")
 
 
-def _load_module():
-    """Import the script by path.
+def _load_module(name: str, path: Path):
+    """Import a module by path, registered in `sys.modules` BEFORE it runs.
 
-    The module is registered in `sys.modules` BEFORE it runs: `dataclasses` resolves a
-    class' own module by name (Python 3.14), and an unregistered module makes it fail
-    with `'NoneType' object has no attribute '__dict__'`.
+    Two reasons: `dataclasses` resolves a class' own module by name (Python 3.14) and
+    fails on an unregistered one, and `msla_tests` imports its neighbour `msla_masks` —
+    which is importable because `tools/` is on `sys.path`, exactly as it is when the tool
+    is run as a script.
     """
-    spec = importlib.util.spec_from_file_location("msla_tests", SCRIPT)
+    spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
 
-msla = _load_module()
+if str(TOOLS) not in sys.path:
+    sys.path.insert(0, str(TOOLS))
+masks = _load_module("msla_masks", TOOLS / "msla_masks.py")
+msla = _load_module("msla_tests", SCRIPT)
 
 
 def _run(tmp_path, *args, name="mask.png") -> Path:
@@ -255,7 +260,7 @@ def test_the_mirrored_file_says_it_is_mirrored(tmp_path):
 
 
 def _marker(screen_px: int = SCREEN_WIDTH_PX) -> np.ndarray:
-    return msla.marker_pixels(msla.Screen(screen_px, 120, 34.4, 34.4))
+    return masks.marker_pixels(masks.Screen(screen_px, 120, 34.4, 34.4))
 
 
 def test_the_marker_is_a_letter_f_asymmetric_in_both_axes():
@@ -279,7 +284,7 @@ def test_the_marker_is_on_by_default_and_the_pattern_only_moves_right(tmp_path):
     bare = _pixels(_run(tmp_path, *arguments, "--no-marker", name="bare.png"))
     marker = _marker()
     marker_height, marker_width = marker.shape
-    gap = int(round(msla.MARKER_GAP_MM / 0.0344))
+    gap = int(round(masks.MARKER_GAP_MM / 0.0344))
 
     assert not np.array_equal(plain, bare), "the marker is on by default"
     assert np.array_equal(plain[:marker_height, :marker_width], marker)
