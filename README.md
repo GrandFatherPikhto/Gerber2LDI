@@ -29,6 +29,9 @@ The power in the examples is deliberately small: the first boards are exposed at
 low fraction, and the working value comes from the dose strip (step 9), never from
 this page.
 
+The pixel-bound test masks for an MSLA printer are a separate script, not a package
+command: `tools/msla_tests.py` (see “MSLA printer: test masks” below).
+
 ## What this program does not do
 
 * **It does not export Gerbers from KiCad.** Use KiCad's own command line
@@ -305,6 +308,44 @@ Geometry comes straight from the Gerber — there is no raster stage in the pipe
 the TIFF is a preview for the eyes only. Millimetres throughout, the X axis is not
 discretised (the machine decides that), and a row is taken at the centre of the machine
 pass: `y0 + (i + 0.5) · step_y`.
+
+## MSLA printer: test masks
+
+The same resist is also exposed on an MSLA printer (LCD mask + 405 nm UV). There the mask
+is the whole story: the LCD lights WHOLE pixels, so a test pattern has to be drawn in
+pixels and has to say what the requested width actually became. `tools/msla_tests.py`
+does that; it is not part of the laser chain and does not import the package.
+
+```sh
+.venv/bin/python tools/msla_tests.py bars --screen-px 5760x3600 --pixel-um 34.4x34.4 \
+    -o out/bars.png --widths-mm 0.2,0.15,0.1,0.08,0.06,0.05
+.venv/bin/python tools/msla_tests.py grid --screen-px 5760x3600 --pixel-um 34.4x34.4 \
+    -o out/grid.png --width-mm 50 --height-mm 40 --line-mm 0.2 --gap-mm 0.15
+```
+
+* `--screen-px` and `--pixel-um` are **mandatory**: this page does not know the printer's
+  spec, and an invented number is worse than a refusal. A pixel may be not square — two
+  sizes, one per axis.
+* every width becomes `n = round(width / pitch)` pixels of its OWN axis, and the report
+  prints the requested width beside the ACTUAL one: a 0.100 mm line on a 34.4 um pixel is
+  3 px = 0.1032 mm, and 0.080 mm is 2 px = 0.0688 mm. That actual number is the one to
+  expect on the plate.
+* a width below half a pixel is a refusal; two widths that land on the same `n` are
+  announced, because their groups will be identical;
+* `bars` — groups of lines with the gap equal to the line width: a horizontal block (the
+  Y resolution) and a vertical block (the X resolution), each square so the two axes can
+  be compared;
+* `grid` — a rectangle filled with lines: the first line flush with the near edge, a line
+  only whole, the leftover at the far edge a gap;
+* white is an exposed pixel: the LINES are white by default, `--invert` swaps that, and
+  `--mirror` reflects the finished picture along X for a resist facing the screen;
+* the report — screen, pixel, widths requested and actual, mirror, polarity — is also
+  written into the PNG text chunk `msla_tests`, so the file remembers what it is.
+
+Getting the PNG to the printer (Claude's route, Денис has not verified it yet): open any
+one-layer file of that printer in **UVtools** (one made by the slicer will do), replace
+the layer with the imported PNG, set the exposure time and save. The mask fixes the
+geometry; the exposure time is the dose.
 
 ## Known library behaviour we work around
 
