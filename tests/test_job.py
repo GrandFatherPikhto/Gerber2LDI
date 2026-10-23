@@ -246,11 +246,14 @@ def test_missing_spot_refuses_unless_switched_off(tmp_path, make_machine):
 def test_pwm_coarser_than_the_spot_warns(tmp_path, make_machine, profile_text):
     """speed / pwm_hz above the spot radius means dashes, not a line.
 
-    50 mm/s at 1 kHz is a 0.05 mm period — fine against a 0.15 mm radius; at
-    500 mm/s it is 0.5 mm, i.e. three times the spot, and the job says so.
+    50 mm/s at 5 kHz is a 0.01 mm period — fine against a 0.15 mm radius; at 100 Hz
+    the same 50 mm/s gives 0.5 mm, i.e. three times the spot, and the job says so.
+    The lever used to be the SPEED (500 mm/s); C1 of `plan_2026_10_23_dose_by_speed`
+    now refuses a speed above the machine limit, so the same product v/pwm_hz is
+    reached by lowering pwm_hz instead. The property and the asserts are unchanged.
     """
     machine = make_machine(
-        profile_text=profile_text.replace("speed_mm_s = 50", "speed_mm_s = 500"))
+        profile_text=profile_text.replace("pwm_hz = 5000", "pwm_hz = 100"))
     job = build_job(_layer(tmp_path, RECT), machine, power=0.5)
     assert any("PWM period" in warning for warning in job.warnings)
 

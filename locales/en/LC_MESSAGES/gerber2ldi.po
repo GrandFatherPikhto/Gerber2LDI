@@ -424,3 +424,12 @@ msgstr ""
 
 msgid "{seconds} s"
 msgstr ""
+
+msgid "Speed {speed} mm/s is above machine.max_rate_x_mm_s = {limit} mm/s: GRBL cuts F to $110, so the dose comes out higher than asked"
+msgstr ""
+
+msgid "A run-up of {overscan} mm (scan.overscan_mm) is too short for {speed} mm/s at accel_x_mm_s2 = {accel} mm/s^2: the head needs {needed} mm to reach full speed, so the first copper is over-exposed"
+msgstr ""
+
+msgid "Profile {path}: {problem}"
+msgstr ""

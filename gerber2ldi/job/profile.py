@@ -25,6 +25,13 @@ whole number of those steps cannot be walked — 20 µm rows on a 12.5 µm step 
 is refused here with the numbers). The axis steps are a property of the MACHINE,
 the row step is a property of the SCAN, hence the two sections.
 
+THE CEILING OF THE SPEED IS ONE RULE. ``[machine] max_rate_x_mm_s`` (``$110`` / 60) and
+``accel_x_mm_s2`` (``$120``) are mandatory: GRBL silently cuts ``F`` to ``$110``, so a
+faster program is exposed at a HIGHER dose than asked, and a run-up shorter than
+``v² / (2a)`` lights the first copper while the head is still accelerating (a tile or a
+board edge comes out burnt). :meth:`Machine.speed_problem` is the single place holding
+both checks — the profile refuses with its file, a job with the numbers of its band.
+
 A missing calibration file is NOT a refusal: the machine works without it, scale 1
 and skew 0, with a warning string. A missing spot radius blocks only the spot
 compensation, and the caller says so explicitly (Ш4: ``--no-spot-compensation``) —
@@ -63,6 +70,17 @@ STEP_TOLERANCE = 1e-6
 The file holds numbers, not measurements, so this only absorbs float noise
 (25 µm · 80 step/mm / 1000 = 2.0000000000000004); a genuine half step is a refusal.
 """
+
+SPEED_TOLERANCE_MM_S = 1e-6
+"""How far a speed may sit above ``max_rate_x_mm_s``, in millimetres per second.
+
+The same role as ``STEP_TOLERANCE``: the profile holds numbers, not measurements, so
+only float noise is absorbed. Exactly at the limit passes; a real overshoot is a
+refusal, because GRBL would cut ``F`` and the dose would come out higher than asked.
+"""
+
+RUN_UP_TOLERANCE_MM = 1e-6
+"""How far a run-up may fall short of ``v² / (2a)``, in millimetres — float noise only."""
 
 ORIGINS = ("front-left", "front-right", "back-left", "back-right")
 SCAN_AXES = ("x", "y")
@@ -141,6 +159,14 @@ class Machine:
     laser: Laser
     scan: Scan
     motor: Motor
+    max_rate_x_mm_s: float
+    """``$110`` in mm/s: the fastest the controller will actually move along X.
+
+    A program that asks for more is cut down by GRBL silently, and the dose of every
+    lit pixel comes out higher than the program says.
+    """
+    accel_x_mm_s2: float
+    """``$120`` in mm/s²: how fast the axis can reach that speed — see :meth:`run_up_mm`."""
     calibration: Calibration
     source: Path
     warnings: tuple[str, ...] = field(default=())
@@ -153,6 +179,34 @@ class Machine:
                 .format(path=self.source.with_name(
                     self.source.stem + ".calibration.toml")))
         return self.calibration.spot_radius_mm
+
+    def run_up_mm(self, speed_mm_s: float) -> float:
+        """The distance the head needs to reach ``speed_mm_s`` from rest: ``v² / (2a)``.
+
+        This formula lives here and nowhere else: copper lit before the head is at full
+        speed gets ``v_ref / v`` times the dose, so the strip in front of a row
+        (``scan.overscan_mm``) must be at least this long. Kept as a method, not a
+        constant, because the answer changes with the speed of every row.
+        """
+        return speed_mm_s ** 2 / (2.0 * self.accel_x_mm_s2)
+
+    def speed_problem(self, speed_mm_s: float) -> str | None:
+        """Why ``speed_mm_s`` cannot run on this machine, or ``None`` when it can.
+
+        RETURNED, not raised: the profile refuses with its own error and the file name,
+        a job refuses with the numbers of its band. One rule, two callers — the limit and
+        ``v² / (2a)`` must not be written twice and drift apart.
+        """
+        if speed_mm_s > self.max_rate_x_mm_s + SPEED_TOLERANCE_MM_S:
+            return _("Speed {speed} mm/s is above machine.max_rate_x_mm_s = {limit} mm/s: GRBL cuts F to $110, so the dose comes out higher than asked").format(
+                speed=round(speed_mm_s, 3), limit=round(self.max_rate_x_mm_s, 3))
+        needed = self.run_up_mm(speed_mm_s)
+        if needed > self.scan.overscan_mm + RUN_UP_TOLERANCE_MM:
+            return _("A run-up of {overscan} mm (scan.overscan_mm) is too short for {speed} mm/s at accel_x_mm_s2 = {accel} mm/s^2: the head needs {needed} mm to reach full speed, so the first copper is over-exposed").format(
+                overscan=round(self.scan.overscan_mm, 3),
+                speed=round(speed_mm_s, 3), accel=round(self.accel_x_mm_s2, 3),
+                needed=round(needed, 3))
+        return None
 
 
 # ───────────────────────────── reading helpers ──────────────────────────────
@@ -338,6 +392,11 @@ def load_profile(path: str | Path) -> Machine:
         steps_per_mm_x=_number(machine, "steps_per_mm_x", source, "machine", positive=True),
         steps_per_mm_y=_number(machine, "steps_per_mm_y", source, "machine", positive=True),
     )
+    # Mandatory for the same reason as the motor steps: without the ceiling and the
+    # acceleration the program cannot tell a dose it will really get from one GRBL
+    # quietly cuts down to $110.
+    max_rate_x = _number(machine, "max_rate_x_mm_s", source, "machine", positive=True)
+    accel_x = _number(machine, "accel_x_mm_s2", source, "machine", positive=True)
 
     table = _section(document, "table", source)
     size_x = _number(table, "size_x_mm", source, "table", positive=True)
@@ -389,7 +448,7 @@ def load_profile(path: str | Path) -> Machine:
             _("Spot radius not measured in {path}: compensation stays unavailable until it is measured")
             .format(path=calibration_file))
 
-    return Machine(
+    built = Machine(
         name=name,
         firmware=firmware,
         table=Table(size_x_mm=size_x, size_y_mm=size_y, origin=origin),
@@ -398,7 +457,16 @@ def load_profile(path: str | Path) -> Machine:
         scan=Scan(scan_axis=axis, row_step_mm=row_step_mm, speed_mm_s=speed,
                   overscan_mm=overscan, bidirectional=bidirectional),
         motor=motor,
+        max_rate_x_mm_s=max_rate_x,
+        accel_x_mm_s2=accel_x,
         calibration=calibration,
         source=source,
         warnings=tuple(warnings),
     )
+    # The profile's OWN speed is checked here, through the same rule a job applies to
+    # every row: a file whose speed cannot be reached is a broken file, not a job that
+    # fails later with numbers nobody can trace back to it.
+    problem = built.speed_problem(speed)
+    if problem is not None:
+        raise ProfileError(_("Profile {path}: {problem}").format(path=source, problem=problem))
+    return built

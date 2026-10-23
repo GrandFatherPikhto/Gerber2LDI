@@ -37,6 +37,12 @@ firmware = "grbl"            # grbl | grblhal | fluidnc
 steps_per_mm_x = 80          # $100 = 80 step/mm: one microstep is 12.5 um
 steps_per_mm_y = 80          # $101 = 80 step/mm: row_step_um must be a WHOLE number
                              # of these steps, or the rows alternate apart (banding)
+max_rate_x_mm_s = 83.333     # $110 = 5000 mm/min, the fastest X really moves. GRBL cuts F
+                             # above it SILENTLY, and every lit pixel then gets a HIGHER
+                             # dose than the program asks for — so the profile refuses
+accel_x_mm_s2 = 250          # $120 = 250 mm/s^2. Full speed needs v^2/(2a) of run-up:
+                             # 50 mm/s -> 5.0 mm, 80 mm/s -> 12.8 mm. scan.overscan_mm
+                             # below must cover the speed actually used, or it is refused
 
 [table]
 size_x_mm = 210              # $130 = 210 (X travel)

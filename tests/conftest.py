@@ -19,6 +19,12 @@ name = "test-machine"
 firmware = "grbl"
 steps_per_mm_x = 50
 steps_per_mm_y = 50
+# The ceiling and the acceleration are mandatory (C1 of `plan_2026_10_23_dose_by_speed`).
+# 83.333 is the shipped machine's $110/60, so a fixture job is judged by the same limit as
+# the real one; accel 500 reaches 50 mm/s in 2.5 mm — half of the 5 mm run-up below, so no
+# existing cell has to live on the float tolerance of an exact boundary.
+max_rate_x_mm_s = 83.333
+accel_x_mm_s2 = 500
 
 [table]
 size_x_mm = 210
@@ -30,7 +36,10 @@ wavelength_nm = 405
 power_w = 0.5
 usable_fraction = 0.8
 s_max = 1000
-pwm_hz = 1000
+# 5000 Hz rather than the shipped 1000: at 50 mm/s that is 10 um per period against the
+# 20 um row step, so the PWM warnings stay silent here unless a cell moves this number
+# on purpose (test_pwm_coarser_than_the_spot_warns sets 100).
+pwm_hz = 5000
 
 [scan]
 scan_axis = "x"
