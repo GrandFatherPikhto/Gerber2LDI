@@ -20,6 +20,9 @@ Cells:
     внутри рамки            плата с --frame, полоска дозы, сетка: проход в [pass_start_x, pass_end_x]
     постановка              тот же --place — те же координаты станка (числа посчитаны руками)
     превью                  read_segments(.nc) = отрезки задания
+    длина хода (Т2)         строка `passes:` в шапке `.nc` — числа посчитаны руками;
+                            во всю ширину = строкам × рамке; оговорка `>=` на месте
+    stdout                  `job` и `pattern …` печатают ту же строку (слова — переводимые)
 
 The numbers are hand-computed for the fixture machine (50 step/mm, row 20 um, overscan
 5 mm, speed 50 mm/s, S500 at power 0.5), so a cell that goes green for the wrong reason is
@@ -28,6 +31,7 @@ visible in the arithmetic.
 import pytest
 
 from gerber2ldi.backends.gcode import read_segments, render_gcode, write_gcode
+from gerber2ldi.cli import main
 from gerber2ldi.job import build_job
 from gerber2ldi.patterns import dose, grid
 from gerber2ldi.source import load_layer
@@ -35,6 +39,20 @@ from gerber2ldi.source import load_layer
 HEADER = "%FSLAX46Y46*%\n%MOMM*%\n%TF.FileFunction,Copper,L1,Top*%\n"
 FOOTER = "M02*\n"
 NO_SPOT = "[calibration]\nscale_x = 1.0\nscale_y = 1.0\nskew_deg = 0.0\n"
+
+
+@pytest.fixture(autouse=True)
+def _english(monkeypatch):
+    """Pin the language: the stdout cells quote our own strings, and the CLI reads the locale."""
+    monkeypatch.setenv("LANGUAGE", "en")
+
+
+def _profile(tmp_path, profile_text: str) -> str:
+    """The fixture profile on disk, with a neutral calibration next to it."""
+    path = tmp_path / "machine.toml"
+    path.write_text(profile_text)
+    (tmp_path / "machine.calibration.toml").write_text(NO_SPOT)
+    return str(path)
 
 
 def _gerber(pads, size=(2.0, 2.0)) -> str:
@@ -194,3 +212,56 @@ def test_the_preview_reads_back_the_job_rows(tmp_path, make_machine):
     expected = {round(row.y_mm, 3): row.segments for row in job.rows if row.segments}
     got = {row.y_mm: row.segments for row in read_segments(target)}
     assert got == expected
+
+
+def test_the_passes_line_counts_what_the_trimming_saved(tmp_path, make_machine):
+    """Hand-computed on the fixture machine: pads flashed at (1, 1) and (20, 5), overscan 5.
+
+    The pads cover y 0 … 2 and 4 … 6, so the layer spans 6 mm and there are 300 rows of
+    0.02 mm; only the 200 rows of the two pads carry copper, and each of those passes is
+    12 mm long (2 mm of pad plus two 5 mm strips) — 2400.0 mm. At full width every row
+    would cross the frame, 31 mm — 9300.0 mm. Time: 2400 mm / 50 mm/s = 48 s, and the line
+    promises AT LEAST that.
+    """
+    job = _job(tmp_path, make_machine, [(1.0, 1.0), (20.0, 5.0)])
+    assert job.pass_lengths() == pytest.approx((2400.0, 9300.0))
+    text = "\n".join(render_gcode(job))
+    assert ("passes: 2400.0 mm exposed run (full-width would be 9300.0 mm, -74%), "
+            ">= 48 s at 50 mm/s") in text
+
+
+def test_a_full_width_figure_reports_no_saving(tmp_path, make_machine):
+    """The control: every row spans the frame, so the two numbers are equal and the share 0.
+
+    A figure 10 mm wide, 100 rows of 0.02 mm, each pass 10 mm of copper plus two 5 mm
+    strips = 2000.0 mm; at full width the frame is also 20 mm, so 100 × 20 = 2000.0 mm.
+    """
+    job = _job(tmp_path, make_machine, [(5.0, 1.0)], size=(10.0, 2.0))
+    text = "\n".join(render_gcode(job))
+    assert ("passes: 2000.0 mm exposed run (full-width would be 2000.0 mm, +0%), "
+            ">= 40 s at 50 mm/s") in text
+
+
+def test_the_job_command_prints_the_passes_line(tmp_path, capsys, profile_text):
+    """stdout carries the job's numbers in the operator's words; the header keeps ASCII."""
+    profile = _profile(tmp_path, profile_text)
+    _layer(tmp_path, [(1.0, 1.0)], name="board.gbr")
+    target = tmp_path / "job.nc"
+    assert main(["job", str(tmp_path / "board.gbr"), "--profile", profile, "--power", "0.5",
+                 "--no-spot-compensation", "-o", str(target)]) == 0
+    out = capsys.readouterr().out
+    assert ("passes: 1200.0 mm exposed run (full-width would be 1200.0 mm, +0%), "
+            ">= 24 s at 50 mm/s") in out
+    assert "passes: 1200.0 mm exposed run" in target.read_text(), "the header has it too"
+
+
+def test_the_pattern_command_prints_the_passes_line(tmp_path, capsys, profile_text):
+    """A calibration pattern is a job like any other: the operator sees its run too."""
+    profile = _profile(tmp_path, profile_text)
+    target = tmp_path / "grid.nc"
+    assert main(["pattern", "grid", "--profile", profile, "--power", "0.6",
+                 "--width-mm", "4", "--height-mm", "3", "--line-mm", "0.2",
+                 "--gap-mm", "0.3", "-o", str(target)]) == 0
+    out = capsys.readouterr().out
+    assert "mm exposed run" in out and "full-width would be" in out
+    assert ">= " in out, "the time estimate says 'at least'"

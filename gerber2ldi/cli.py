@@ -18,7 +18,8 @@ from pathlib import Path
 from .backends.gcode import read_segments, write_gcode
 from .errors import Gerber2LDIError, JobError
 from .i18n import _, setup_i18n
-from .job import PROCESSES, SIDES, SIDE_TOP, PROCESS_ETCH, build_job, ink_box, load_profile
+from .job import (PROCESSES, SIDES, SIDE_TOP, PROCESS_ETCH, build_job, format_duration,
+                  ink_box, load_profile)
 from .patterns import (DEFAULT_GRID_GAP_MM, DEFAULT_GRID_HEIGHT_MM, DEFAULT_GRID_LINE_MM,
                        DEFAULT_GRID_WIDTH_MM, DEFAULT_LENGTH_MM, DEFAULT_LINE_WIDTH_MM,
                        DEFAULT_SIDE_MM, DEFAULT_TILE_HEIGHT_MM, DEFAULT_TILE_WIDTH_MM,
@@ -143,6 +144,23 @@ def _print_warnings(lines) -> None:
         print(line, file=sys.stderr)
 
 
+def _print_passes(job) -> None:
+    """The numbers the .nc header carries, in the operator's language.
+
+    Only the WORDS are translated: the numbers come from ``Job.pass_lengths``, and the
+    header keeps its own ASCII English copy because the file is written with
+    ``encoding="ascii"`` (see `job.job`). The time is a LOWER bound — rapids, accelerations
+    and M4/M5 are not in it.
+    """
+    exposed, full_width = job.pass_lengths()
+    share = (exposed / full_width - 1.0) * 100.0 if full_width else 0.0
+    print(_("passes: {exposed} mm exposed run (full-width would be {full} mm, {share}%), >= {time} at {speed} mm/s")
+          .format(exposed=f"{exposed:.1f}", full=f"{full_width:.1f}",
+                  share=f"{share:+.0f}",
+                  time=format_duration(exposed / job.speed_mm_s),
+                  speed=f"{job.speed_mm_s:g}"))
+
+
 def _cmd_info(args: argparse.Namespace) -> int:
     """What is in the layer: units, size, apertures, polarity, shape count."""
     layer = load_layer(args.gerber)
@@ -177,6 +195,7 @@ def _cmd_job(args: argparse.Namespace) -> int:
                     power=args.power, place_mm=args.place, frame=frame,
                     spot_compensation=not args.no_spot_compensation)
     _print_warnings(job.warnings)
+    _print_passes(job)
     write_gcode(job, args.output)
     print(_("Wrote {path}: {rows} rows, {segments} segments, S{s}")
           .format(path=args.output, rows=job.inked_rows,
@@ -307,6 +326,7 @@ def _cmd_pattern(args: argparse.Namespace) -> int:
     except ValueError as bad:
         raise JobError(_("Cannot build the pattern: {error}").format(error=bad)) from bad
     _print_warnings(built.warnings + job.warnings)
+    _print_passes(job)
     write_gcode(job, args.output)
     for line in _pattern_report(args, built, job):
         print(line)

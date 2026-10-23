@@ -131,6 +131,11 @@ gerber2ldi job B_Cu.gbr --profile profiles/china_ldi_grbl.toml \
   all. The run-up takes up the belt slack in the same direction every time, and nothing
   moves: `--frame` and `--place` place the figure exactly as before — only the idle ends
   of the rows are gone.
+* the job says what that bought, on stdout and in the `.nc` header: `passes: 1234.5 mm
+  exposed run (full-width would be 2345.6 mm, -47%), >= 4 min 06 s at 50 mm/s` — the run
+  the head really travels against the run the same rows would cost at full width. The
+  time is a **lower bound**: rapids, accelerations and M4/M5 are not counted (the profile
+  has no rapid speed to count them with).
 
 **Two sides line up only through the frame and the blank's stop.** Expose the first
 side, turn the blank over left to right against the same stop, expose the second. There

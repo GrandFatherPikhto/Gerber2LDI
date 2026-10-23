@@ -87,6 +87,48 @@ class Dose:
     s_value: int
 
 
+def _row_pass(row: ScanRow, overscan_mm: float) -> tuple[float, float] | None:
+    """The pass rule itself: the row's own copper plus the strip, or nothing at all.
+
+    Module level so that the length of the run can be counted BEFORE the job exists — the
+    header note is built in `build_job`, and it must count the same passes the writer
+    writes, not a second opinion about them.
+    """
+    if not row.segments:
+        return None
+    return (row.segments[0][0] - overscan_mm,
+            row.segments[-1][1] + overscan_mm)
+
+
+def _pass_lengths(rows: tuple[ScanRow, ...], overscan_mm: float,
+                  box: Box) -> tuple[float, float]:
+    """The run the head really travels, and the run it would travel at full width.
+
+    ``exposed`` sums the passes of the rows that have copper, run-ups included; a row with
+    nothing on it costs nothing, which is what the trimming bought. ``full_width`` is what
+    the SAME rows would cost if each of them crossed the whole job frame — the number the
+    operator compares against.
+    """
+    exposed = 0.0
+    for row in rows:
+        span = _row_pass(row, overscan_mm)
+        if span is not None:
+            exposed += span[1] - span[0]
+    frame = (box[2] + overscan_mm) - (box[0] - overscan_mm)
+    return exposed, len(rows) * frame
+
+
+def format_duration(seconds: float) -> str:
+    """A duration as ``4 min 06 s``, rounded DOWN — the line promises ``>=``.
+
+    A fraction of a second would be a claim about a speed the machine was never measured
+    at; whole seconds below the estimate keep the promise true.
+    """
+    total = int(seconds)
+    minutes, rest = divmod(total, 60)
+    return f"{minutes} min {rest:02d} s" if minutes else f"{rest} s"
+
+
 @dataclass(frozen=True, slots=True)
 class Job:
     """Machine-space rows plus everything the G-code writer needs.
@@ -160,10 +202,11 @@ class Job:
         coordinates. The pass of a row always runs in +X, so the slack of the belt is
         taken up by the run-up in the same direction every time.
         """
-        if not row.segments:
-            return None
-        return (row.segments[0][0] - self.overscan_mm,
-                row.segments[-1][1] + self.overscan_mm)
+        return _row_pass(row, self.overscan_mm)
+
+    def pass_lengths(self) -> tuple[float, float]:
+        """(exposed run, full-width run) in millimetres — both from :meth:`row_pass`."""
+        return _pass_lengths(self.rows, self.overscan_mm, self.box)
 
     @property
     def segment_count(self) -> int:
@@ -492,6 +535,18 @@ def build_job(layer: Layer, machine: Machine, *, side: str = SIDE_TOP,
     for index, dose in enumerate(doses, start=1):
         header.append(f"dose {index}/{len(doses)}: y {dose.y0_mm:.3f}-{dose.y1_mm:.3f} mm "
                       f"(figure), power {dose.power:.4f}, S {dose.s_value}")
+
+    # What the trimming bought, in ONE line: the run the head really travels against the
+    # run the same rows would cost at full width. ASCII English like every header note
+    # (the file is written with encoding="ascii"); the time is a LOWER bound on purpose —
+    # the rapids, the accelerations and M4/M5 are not in it, and the profile has no G0
+    # speed to count them with.
+    exposed, full_width = _pass_lengths(rows, overscan, ink)
+    share = (exposed / full_width - 1.0) * 100.0 if full_width else 0.0
+    header.append(f"passes: {exposed:.1f} mm exposed run "
+                  f"(full-width would be {full_width:.1f} mm, {share:+.0f}%), "
+                  f">= {format_duration(exposed / machine.scan.speed_mm_s)} "
+                  f"at {machine.scan.speed_mm_s:g} mm/s")
 
     return Job(rows=rows, box=ink, overscan_mm=overscan,
                speed_mm_s=machine.scan.speed_mm_s,

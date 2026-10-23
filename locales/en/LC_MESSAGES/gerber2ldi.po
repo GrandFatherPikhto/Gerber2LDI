@@ -415,3 +415,6 @@ msgstr ""
 
 msgid "lines along X, along Y, or both"
 msgstr ""
+
+msgid "passes: {exposed} mm exposed run (full-width would be {full} mm, {share}%), >= {time} at {speed} mm/s"
+msgstr ""

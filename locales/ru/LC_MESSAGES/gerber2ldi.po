@@ -415,3 +415,6 @@ msgstr "промежуток между линиями, мм"
 
 msgid "lines along X, along Y, or both"
 msgstr "линии вдоль X, вдоль Y или и те и другие"
+
+msgid "passes: {exposed} mm exposed run (full-width would be {full} mm, {share}%), >= {time} at {speed} mm/s"
+msgstr "ход: {exposed} мм с засветкой (во всю ширину было бы {full} мм, {share}%), не меньше {time} при {speed} мм/с"
