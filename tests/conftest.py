@@ -40,6 +40,9 @@ s_max = 1000
 # 20 um row step, so the PWM warnings stay silent here unless a cell moves this number
 # on purpose (test_pwm_coarser_than_the_spot_warns sets 100).
 pwm_hz = 5000
+# The fixture machine pulses the beam, like the shipped module: S is the dose and
+# usable_fraction is a real ceiling. An on/off machine is a cell's own copy.
+modulation = "pwm"
 
 [scan]
 scan_axis = "x"

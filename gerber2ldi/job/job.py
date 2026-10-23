@@ -61,7 +61,7 @@ from ..raster import iter_rows
 from ..scan import ScanRow, apply_skew, compensate, invert, mirror, scale, shift
 from ..source import Layer
 from .passes import Box, exposed_time_s, format_duration, pass_lengths, row_pass
-from .profile import Machine
+from .profile import MODULATION_ONOFF, Machine
 
 PROCESS_ETCH = "etch-resist"
 PROCESS_PLATING = "plating-resist"
@@ -270,12 +270,25 @@ def _check_choice(value: str, allowed: tuple[str, ...], field_name: str) -> str:
     return value
 
 
-def _s_value(power: float, machine: Machine) -> int:
+def _s_value(power: float | None, machine: Machine) -> int:
     """Requested fraction → S, refusing above the ceiling (never clamping).
 
     ``floor`` on purpose: with a non-round ``s_max`` rounding up could land one
     step ABOVE ``usable_fraction · s_max``, and that ceiling is hard.
+
+    An ON/OFF laser has no fraction to give: the driver holds the current, so ``S`` is
+    always ``s_max`` and ``usable_fraction`` does NOT apply — it caps a duty cycle that
+    does not exist. Any power other than ``None``/``1`` is refused with the way out: the
+    dose of such a machine is set by the SPEED (and by the driver current), not by a word
+    the machine cannot honour.
     """
+    if machine.laser.modulation == MODULATION_ONOFF:
+        if power is not None and power != 1.0:
+            raise JobError(
+                _("The laser is on/off: power is set by the driver current; vary --speeds instead of --power"))
+        return int(math.floor(machine.laser.s_max + 1e-9))
+    if power is None:
+        raise JobError(_("Power is required: one value, or bands for a dose strip"))
     ceiling = machine.laser.usable_fraction
     if not math.isfinite(power) or power <= 0.0:
         raise JobError(_("Requested power {requested} must be a fraction above zero")
@@ -444,14 +457,17 @@ def build_job(layer: Layer, machine: Machine, *, side: str = SIDE_TOP,
         raise JobError(
             _("Table origin {origin} is not supported yet: only {supported}")
             .format(origin=machine.table.origin, supported=SUPPORTED_ORIGIN))
-    if power is None and not power_bands:
+    onoff = machine.laser.modulation == MODULATION_ONOFF
+    # An on/off laser has no fraction to ask for: leaving `power` out is the normal case
+    # there, and `_s_value` answers with `s_max`.
+    if power is None and not power_bands and not onoff:
         raise JobError(_("Power is required: one value, or bands for a dose strip"))
     if power is not None and power_bands:
         raise JobError(_("Either one power or power bands, not both"))
     if power_bands and spot_compensation:
         raise JobError(
             _("Power bands cannot be combined with spot compensation: it adds and removes rows, so a band would no longer own its rows (a dose strip runs with --no-spot-compensation)"))
-    s_value = _s_value(power, machine) if power is not None else 0
+    s_value = _s_value(power, machine) if (power is not None or onoff) else 0
     doses = _doses(power_bands, machine) if power_bands else ()
 
     calibration = machine.calibration
@@ -590,6 +606,17 @@ def build_job(layer: Layer, machine: Machine, *, side: str = SIDE_TOP,
             warnings.append(
                 _("PWM period {period} mm is wider than the spot radius {radius} mm: dashes, not a line")
                 .format(period=round(period, 5), radius=round(radius, 5)))
+    # The same product judged against the ROW STEP, and WITHOUT a measured spot: this is
+    # the warning that was silent on the 22.10 plate, where the beam was pulsing every
+    # 50 um across 25 um rows and the edges of every lit strip came out jagged.
+    if not onoff:
+        flash_um = fastest / machine.laser.pwm_hz * 1000.0
+        step_um = machine.scan.row_step_mm * 1000.0
+        if flash_um > step_um:
+            warnings.append(
+                _("PWM draws a flash every {flash} um at {speed} mm/s and {hz} Hz, and the row step is {step} um: the edges of a lit strip come out jagged")
+                .format(flash=round(flash_um, 1), speed=round(fastest, 1),
+                        hz=round(machine.laser.pwm_hz, 1), step=round(step_um, 1)))
 
     header = list(notes)
     header.append(_compensation_note(radius))
@@ -607,6 +634,11 @@ def build_job(layer: Layer, machine: Machine, *, side: str = SIDE_TOP,
     header.append(f"GRBL: $32=1 (laser mode), "
                   f"$30={machine.laser.s_max:.0f} "
                   f"(max spindle speed: the power word is a fraction of it)")
+    if onoff:
+        # The power word cannot carry a dose here, and saying so in the file is the only
+        # way the operator can tell why every S is the same number.
+        header.append(f"laser: on/off, S = {machine.laser.s_max:.0f} "
+                      f"(the driver sets the power; usable_fraction does not apply)")
     if doses:
         # The unit of the relative dose, stated ONCE for the whole strip: it is the number
         # the operator compares tiles by, and without the reference speed it means nothing.
@@ -639,7 +671,10 @@ def build_job(layer: Layer, machine: Machine, *, side: str = SIDE_TOP,
 
     return Job(rows=rows, box=ink, overscan_mm=overscan,
                speed_mm_s=machine.scan.speed_mm_s,
-               s_value=s_value if power is not None else max(d.s_value for d in doses),
+               # A uniform job keeps its own word; a strip takes the highest band, which is
+               # what the summary line on stdout reports. An on/off laser has `power=None`
+               # and NO bands, so the first branch is the one it takes.
+               s_value=s_value if not doses else max(d.s_value for d in doses),
                power_fraction=power, side=side, process=process,
                place_mm=(place_x, place_y), warnings=tuple(warnings),
                s_values=tuple(s_rows) if doses else (),

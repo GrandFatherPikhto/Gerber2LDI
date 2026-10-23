@@ -360,6 +360,63 @@ FLAG_CLASH_CELLS = [
 ]
 
 
+# ── С3 of `plan_2026_10_23_dose_by_speed`: a laser that only switches ───────────────
+
+
+def _onoff_profile(tmp_path, profile_text, calibration_text=NO_SPOT):
+    """The fixture machine as an on/off one: the driver sets the power, not the program."""
+    return _machine_files(tmp_path, profile_text.replace('modulation = "pwm"',
+                                                         'modulation = "onoff"'),
+                          calibration_text)
+
+
+def test_an_onoff_laser_needs_no_power_flag(tmp_path, capsys, profile_text):
+    """C3: `--power` is optional there, and the program is written at `s_max`.
+
+    `preview` is the second half: it used to fill in `usable_fraction` by default, which
+    an on/off machine would refuse.
+    """
+    profile = _onoff_profile(tmp_path, profile_text)
+    path = tmp_path / "rect.gbr"
+    path.write_text(RECT_GERBER)
+    target = tmp_path / "layer.nc"
+    assert main(["job", str(path), "--profile", str(profile),
+                 "--no-spot-compensation", "-o", str(target)]) == 0
+    assert "S1000" in capsys.readouterr().out
+    assert "laser: on/off, S = 1000" in target.read_text()
+
+    picture = tmp_path / "preview.png"
+    assert main(["preview", str(path), "--profile", str(profile),
+                 "--no-spot-compensation", "-o", str(picture)]) == 0
+    assert picture.is_file()
+
+
+def test_an_onoff_laser_refuses_the_power_flag(tmp_path, capsys, profile_text):
+    """One line, exit 2, no file — and the advice names the knob that does work."""
+    profile = _onoff_profile(tmp_path, profile_text)
+    path = tmp_path / "rect.gbr"
+    path.write_text(RECT_GERBER)
+    target = tmp_path / "layer.nc"
+    assert main(["job", str(path), "--profile", str(profile), "--power", "0.5",
+                 "--no-spot-compensation", "-o", str(target)]) == 2
+    captured = capsys.readouterr()
+    assert "vary --speeds" in captured.err
+    assert not target.exists()
+
+
+def test_pattern_dose_by_speed_needs_no_power_on_an_onoff_laser(tmp_path, capsys,
+                                                                profile_text):
+    """C2 and C3 together: one `S` for every tile, the speed carries the dose."""
+    profile = _onoff_profile(tmp_path, profile_text)
+    target = tmp_path / "dose.nc"
+    assert main(["pattern", "dose", "--profile", str(profile), "--speeds", "50,25",
+                 "-o", str(target)]) == 0
+    out = capsys.readouterr().out
+    text = target.read_text()
+    assert text.count("S 1000") == 2, "one power word, the same on both tiles"
+    assert "speed 50 mm/s" in out and "speed 25 mm/s" in out
+
+
 @pytest.mark.parametrize("options, expected, why", FLAG_CLASH_CELLS,
                          ids=[cell[2] for cell in FLAG_CLASH_CELLS])
 def test_pattern_dose_refuses_clashing_level_flags(tmp_path, capsys, profile_text,

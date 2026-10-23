@@ -261,7 +261,10 @@ def _cmd_preview(args: argparse.Namespace) -> int:
         layer = load_layer(source)
         if args.profile:
             machine = load_profile(args.profile)
-            power = args.power if args.power is not None else machine.laser.usable_fraction
+            # An on/off laser has no fraction to default to: the driver holds the current,
+            # and `usable_fraction` caps a duty cycle that does not exist there.
+            power = args.power if args.power is not None else (
+                None if machine.laser.is_onoff else machine.laser.usable_fraction)
             frame = load_layer(args.frame) if args.frame else None
             job = build_job(layer, machine, side=args.side, process=args.process,
                             power=power, place_mm=args.place, frame=frame,
@@ -381,7 +384,11 @@ def _cmd_pattern(args: argparse.Namespace) -> int:
             built = bars(machine, widths=args.widths, length_mm=args.length_mm)
         elif args.kind == "dose":
             powers, speeds = _dose_levels(args)
-            built = dose(machine, powers, speeds=speeds, power=args.power,
+            power = args.power
+            if speeds and power is None and machine.laser.is_onoff:
+                # The only honest fraction for an on/off driver: S will be s_max anyway.
+                power = 1.0
+            built = dose(machine, powers, speeds=speeds, power=power,
                          tile_width_mm=args.tile_width_mm,
                          tile_height_mm=args.tile_height_mm)
         elif args.kind == "grid":
@@ -413,14 +420,19 @@ def _cmd_pattern(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def _add_job_options(parser: argparse.ArgumentParser, *, power_required: bool) -> None:
+def _add_job_options(parser: argparse.ArgumentParser) -> None:
+    """The options every job shares. ``--power`` is NOT argparse-required.
+
+    An on/off laser has nothing to put there (the driver sets the power), and argparse
+    cannot ask the profile a question. The core still refuses a missing power on a PWM
+    machine with one line, so nothing is lost — and both cases keep exit code 2.
+    """
     parser.add_argument("--profile", required=True, help=_("machine profile (TOML)"))
     parser.add_argument("--side", choices=SIDES, default=SIDE_TOP,
                         help=_("side of the board"))
     parser.add_argument("--process", choices=PROCESSES, default=PROCESS_ETCH,
                         help=_("process: what the resist does"))
-    parser.add_argument("--power", type=_fraction,
-                        required=power_required, default=None,
+    parser.add_argument("--power", type=_fraction, default=None,
                         help=_("laser power as a fraction of the module"))
     parser.add_argument("--place", type=_place, default=(0.0, 0.0),
                         help=_("where to put the run-up start, mm as X,Y"))
@@ -457,7 +469,7 @@ def build_parser() -> argparse.ArgumentParser:
         "job", help=_("make a machine job"),
         description=_("make a machine job"))
     job.add_argument("gerber", help=_("Gerber file"))
-    _add_job_options(job, power_required=True)
+    _add_job_options(job)
     job.add_argument("--frame", default=None,
                      help=_("board outline (Edge_Cuts) shared by both sides"))
     job.add_argument("-o", "--output", required=True, help=_("output G-code"))
@@ -474,7 +486,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=_("test bars: lines and gaps of known widths, horizontal then vertical"))
     bars_parser.add_argument("--profile", required=True, help=_("machine profile (TOML)"))
     bars_parser.add_argument("-o", "--output", required=True, help=_("output G-code"))
-    bars_parser.add_argument("--power", type=_fraction, required=True,
+    bars_parser.add_argument("--power", type=_fraction, default=None,
                              help=_("laser power as a fraction of the module"))
     bars_parser.add_argument("--widths", type=_widths, default=DEFAULT_WIDTHS_MM,
                              help=_("bar widths, mm, in the order to draw them"))
@@ -524,7 +536,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=_("grid: fill a rectangle with lines — a coating test over the whole area"))
     grid_parser.add_argument("--profile", required=True, help=_("machine profile (TOML)"))
     grid_parser.add_argument("-o", "--output", required=True, help=_("output G-code"))
-    grid_parser.add_argument("--power", type=_fraction, required=True,
+    grid_parser.add_argument("--power", type=_fraction, default=None,
                              help=_("laser power as a fraction of the module"))
     grid_parser.add_argument("--width-mm", type=_positive_mm,
                              default=DEFAULT_GRID_WIDTH_MM,
@@ -550,7 +562,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=_("skew square: a contour L×L to measure the diagonals"))
     square_parser.add_argument("--profile", required=True, help=_("machine profile (TOML)"))
     square_parser.add_argument("-o", "--output", required=True, help=_("output G-code"))
-    square_parser.add_argument("--power", type=_fraction, required=True,
+    square_parser.add_argument("--power", type=_fraction, default=None,
                                help=_("laser power as a fraction of the module"))
     square_parser.add_argument("--side-mm", type=_positive_mm, default=DEFAULT_SIDE_MM,
                                help=_("square side, mm"))

@@ -84,6 +84,23 @@ such a profile is **refused** with both numbers, because the rows would land 12.
 microstep along X are not refused: the job counts them and says so in one line,
 because their ends snap to the nearest step.
 
+`laser.modulation` says HOW the driver switches the diode, and it decides what a power
+word means:
+
+* `pwm` — the firmware pulses the beam; `S` is a fraction of `s_max` and
+  `usable_fraction` is the hard ceiling (this is `profiles/china_ldi_grbl.toml`);
+* `onoff` — the driver switches the diode at a fixed current; `S` is always `s_max`,
+  `usable_fraction` does **not** apply (there is no duty cycle to cap), and the dose is
+  set by the SPEED plus the driver current and an ND filter. `--power` is then optional,
+  and any value other than `1` is refused with the advice to vary `--speeds`.
+  `profiles/china_ldi_grbl_sld3232vf.toml` is that mode for the old table with the
+  SLD3232VF diode; it has its own calibration file, because the spot is a different one.
+
+`machine.max_rate_x_mm_s` (`$110`/60) and `machine.accel_x_mm_s2` (`$120`) are mandatory
+too: a speed above the limit is refused (GRBL would cut `F` silently and the dose would
+come out higher than asked), and so is a run-up shorter than `v²/(2a)`, because the first
+copper would be lit while the head is still accelerating.
+
 The measured error of your instance lives next to it, in
 `profiles/<name>.calibration.toml`:
 

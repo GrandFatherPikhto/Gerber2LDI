@@ -478,3 +478,9 @@ msgstr ""
 
 msgid "Dose band {y0} … {y1} mm: {problem}"
 msgstr ""
+
+msgid "The laser is on/off: power is set by the driver current; vary --speeds instead of --power"
+msgstr ""
+
+msgid "PWM draws a flash every {flash} um at {speed} mm/s and {hz} Hz, and the row step is {step} um: the edges of a lit strip come out jagged"
+msgstr ""

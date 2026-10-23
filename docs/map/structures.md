@@ -23,8 +23,9 @@ ScanRow                          — неизменяемая
                steps_per_mm_y ($101) — шаг мотора, max_rate_x_mm_s ($110/60),
                accel_x_mm_s2 ($120) — предел скорости по X и разгон
 [table]        size_x_mm, size_y_mm, origin
-[laser]        wavelength_nm, power_w (ОПТИЧЕСКАЯ), usable_fraction (0..1, жёсткий потолок),
-               s_max ($30), pwm_hz
+[laser]        wavelength_nm, power_w (ОПТИЧЕСКАЯ), modulation (pwm | onoff),
+               usable_fraction (0..1, жёсткий потолок при pwm; при onoff НЕ применяется),
+               s_max ($30; при onoff — единственное слово мощности), pwm_hz
 [scan]         scan_axis, row_step_um (ЦЕЛОЕ число шагов мотора по Y), speed_mm_s,
                overscan_mm, bidirectional
 ```

@@ -288,7 +288,7 @@ msgid "Layout: horizontal groups at the bottom left (along X: Y resolution), ver
 msgstr "Раскладка: горизонтальные группы слева внизу (вдоль X: разрешение по Y), вертикальные справа от них (вдоль Y: разрешение по X)"
 
 msgid "Dose strip: {count} tiles bottom to top, each with its own dose level"
-msgstr "Полоска дозы: {count} прямоугольников снизу вверх, у каждого свой уровень дозы"
+msgstr "Полоска дозы: прямоугольников — {count}, снизу вверх, у каждого свой уровень дозы"
 
 msgid "  {index}: y {y0} … {y1} mm, power {power}, S {s}, speed {speed} mm/s, relative dose {dose}"
 msgstr "  {index}: y {y0} … {y1} мм, мощность {power}, S {s}, скорость {speed} мм/с, относительная доза {dose}"
@@ -478,3 +478,9 @@ msgstr "Полоса дозы {y0} … {y1} мм просит {speed} мм/с: �
 
 msgid "Dose band {y0} … {y1} mm: {problem}"
 msgstr "Полоса дозы {y0} … {y1} мм: {problem}"
+
+msgid "The laser is on/off: power is set by the driver current; vary --speeds instead of --power"
+msgstr "Лазер работает вкл/выкл: мощность задаёт ток драйвера, меняйте --speeds, а не --power"
+
+msgid "PWM draws a flash every {flash} um at {speed} mm/s and {hz} Hz, and the row step is {step} um: the edges of a lit strip come out jagged"
+msgstr "ШИМ даёт вспышку каждые {flash} мкм при {speed} мм/с и {hz} Гц, а шаг строки — {step} мкм: края засвеченной полосы будут зазубренными"

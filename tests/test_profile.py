@@ -58,6 +58,9 @@ s_max = 1000
 # 5000 Hz keeps the PWM period at 10 um at the 50 mm/s speed below (row step 20 um), so no
 # writing-related warning fires in this module by accident. The shipped file says 1000.
 pwm_hz = 5000
+# The way the driver modulates the diode decides what a power word MEANS, so it is
+# mandatory: "pwm" here, like the shipped module and the conftest fixture.
+modulation = "pwm"
 
 [scan]
 scan_axis = "x"
@@ -151,6 +154,10 @@ BAD_PROFILE_CELLS = [
     ("zero max rate", "max_rate_x_mm_s = 83.333", "max_rate_x_mm_s = 0",
      "machine.max_rate_x_mm_s"),
     ("negative accel", "accel_x_mm_s2 = 500", "accel_x_mm_s2 = -1", "machine.accel_x_mm_s2"),
+    # C3: an unstated modulation is a refusal, never a default — guessing would either
+    # burn the resist at 1 % duty or expose at full power without saying so.
+    ("missing modulation", 'modulation = "pwm"', "", "laser.modulation is required"),
+    ("unknown modulation", 'modulation = "pwm"', 'modulation = "analog"', "laser.modulation"),
     ("usable_fraction zero", "usable_fraction = 0.8", "usable_fraction = 0.0",
      "laser.usable_fraction"),
     ("usable_fraction above one", "usable_fraction = 0.8", "usable_fraction = 1.5",
@@ -319,6 +326,27 @@ def test_a_fixture_speed_above_the_limit_is_refused(tmp_path):
     path = _write(tmp_path, PROFILE.replace("speed_mm_s = 50", "speed_mm_s = 500"))
     with pytest.raises(ProfileError, match="machine.max_rate_x_mm_s"):
         load_profile(path)
+
+
+def test_the_diode_profile_can_run_the_speed_strip():
+    """C3 on the file that goes onto the OLD table with the SLD3232VF diode.
+
+    The same machine, the same table, ONE different part: the laser. It says "onoff", it
+    carries the wider strip (80 mm/s needs v²/(2a) = 12.8 mm and the file has 14), and its
+    own calibration file does not exist yet — the usual two warnings, not a refusal. The
+    old module's profile stays "pwm", so the two files cannot be mixed up.
+    """
+    shipped = Path(__file__).resolve().parents[1] / "profiles"
+    diode = load_profile(shipped / "china_ldi_grbl_sld3232vf.toml")
+    assert diode.laser.modulation == "onoff"
+    assert diode.laser.is_onoff
+    assert diode.laser.power_w == 0.0
+    assert diode.max_rate_x_mm_s == pytest.approx(83.333)
+    assert diode.accel_x_mm_s2 == pytest.approx(250.0)
+    assert diode.scan.overscan_mm == pytest.approx(14.0)
+    assert diode.speed_problem(80.0) is None, "the strip's top speed fits this run-up"
+    assert len(diode.warnings) == 2, "no calibration file, no measured spot"
+    assert load_profile(shipped / "china_ldi_grbl.toml").laser.modulation == "pwm"
 
 
 def test_missing_calibration_is_not_a_refusal(tmp_path):

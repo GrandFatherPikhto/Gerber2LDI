@@ -32,6 +32,15 @@ faster program is exposed at a HIGHER dose than asked, and a run-up shorter than
 board edge comes out burnt). :meth:`Machine.speed_problem` is the single place holding
 both checks — the profile refuses with its file, a job with the numbers of its band.
 
+HOW THE LASER IS MODULATED (``[laser] modulation``) is a property of the DRIVER, and it
+changes what a power word means. ``pwm`` — the firmware pulses the beam and ``S`` is a
+fraction of ``s_max``, capped by ``usable_fraction``. ``onoff`` — the driver switches the
+diode at a fixed current, the power word carries no dose at all (``S`` is always
+``s_max``), ``usable_fraction`` does NOT apply, and the dose is set by how fast the head
+moves (a speed strip) and by the driver current. A profile that does not say which one it
+is has no business building programs: guessing would either burn the resist at 1 % duty
+or silently expose at full power.
+
 A missing calibration file is NOT a refusal: the machine works without it, scale 1
 and skew 0, with a warning string. A missing spot radius blocks only the spot
 compensation, and the caller says so explicitly (Ш4: ``--no-spot-compensation``) —
@@ -50,6 +59,9 @@ from ..i18n import _
 
 UM_PER_MM = 1000.0
 FIRMWARE_DIALECTS = ("grbl", "grblhal", "fluidnc")
+MODULATION_PWM = "pwm"
+MODULATION_ONOFF = "onoff"
+MODULATIONS = (MODULATION_PWM, MODULATION_ONOFF)
 MAX_SKEW_DEG = 5.0
 """Beyond this the machine is broken, not skewed. The guard exists to catch a
 degrees/radians mix-up: 0.2 rad written into ``skew_deg`` reads as 11.5°."""
@@ -100,6 +112,17 @@ class Laser:
     usable_fraction: float
     s_max: float
     pwm_hz: float
+    modulation: str
+    """``pwm`` or ``onoff`` — see the module docstring.
+
+    ``onoff`` is not "PWM at 100 %": the driver holds the current, so ``s_max`` is the
+    only honest power word and ``usable_fraction`` means nothing.
+    """
+
+    @property
+    def is_onoff(self) -> bool:
+        """True when the power word cannot carry a dose — only the speed can."""
+        return self.modulation == MODULATION_ONOFF
 
 
 @dataclass(frozen=True, slots=True)
@@ -411,6 +434,9 @@ def load_profile(path: str | Path) -> Machine:
         _fail(source, "laser.usable_fraction", "a fraction in (0, 1]", usable)
     s_max = _number(laser, "s_max", source, "laser", positive=True)
     pwm_hz = _number(laser, "pwm_hz", source, "laser", positive=True)
+    # How the driver modulates the diode decides what a power word MEANS (see the module
+    # docstring), so an unstated mode is a refusal, never a default.
+    modulation = _choice(laser, "modulation", source, "laser", MODULATIONS)
 
     scan = _section(document, "scan", source)
     axis = _choice(scan, "scan_axis", source, "scan", SCAN_AXES)
@@ -453,7 +479,8 @@ def load_profile(path: str | Path) -> Machine:
         firmware=firmware,
         table=Table(size_x_mm=size_x, size_y_mm=size_y, origin=origin),
         laser=Laser(wavelength_nm=wavelength, power_w=power_w,
-                    usable_fraction=usable, s_max=s_max, pwm_hz=pwm_hz),
+                    usable_fraction=usable, s_max=s_max, pwm_hz=pwm_hz,
+                    modulation=modulation),
         scan=Scan(scan_axis=axis, row_step_mm=row_step_mm, speed_mm_s=speed,
                   overscan_mm=overscan, bidirectional=bidirectional),
         motor=motor,

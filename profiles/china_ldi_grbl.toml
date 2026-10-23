@@ -53,8 +53,14 @@ origin = "front-left"        # front-left | front-right | back-left | back-right
 wavelength_nm = 405
 power_w = 0.0                # MEASURE: OPTICAL power of the module, not the label
 usable_fraction = 0.8        # power ceiling as a fraction; S above this is never issued
+                             # (NOT applied when modulation = "onoff": there is no duty cycle)
 s_max = 1000                 # $30 = 1000: S1000 is full power
-pwm_hz = 1000                # MEASURE: firmware PWM frequency (the "PWM draws dashes" check)
+pwm_hz = 1000                # MEASURE: firmware PWM frequency (the "PWM draws dashes" check).
+                             # Not applied at "onoff" either — the driver sets the power.
+modulation = "pwm"           # pwm = the firmware pulses the beam, S is the dose.
+                             # onoff = the driver switches the diode at a fixed current:
+                             # S is always s_max and the dose comes from the SPEED
+                             # (see profiles/china_ldi_grbl_sld3232vf.toml)
 
 [scan]
 scan_axis = "x"              # MEASURE: which axis scans

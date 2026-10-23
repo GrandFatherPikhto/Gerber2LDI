@@ -21,12 +21,20 @@ Cells closed here:
                                 с числами полосы; 0 мм/с — отказ
     доза полосы (С2)            скорость, относительная доза и E на каждую полосу;
                                 E — по канону §18.3 (5 мВт, 50 мм/с, 25 мкм = 400 мДж/см²)
+    лазер вкл/выкл (С3)         S всегда s_max и usable_fraction не мешает; --power 0.5 —
+                                отказ с советом про --speeds; шапка говорит «on/off»
+    ШИМ против шага строки (С3) 50 мм/с при 1000 Гц на строке 20 мкм — предупреждение
+                                (без измеренного пятна); 10 мм/с — тишина; настоящий
+                                профиль 50 мм/с, 1000 Гц, строка 25 мкм — предупреждение
 """
 import pytest
 
+from pathlib import Path
+
+from gerber2ldi.backends.gcode import render_gcode
 from gerber2ldi.errors import JobError
 from gerber2ldi.job import (PROCESS_PLATING, SIDE_BOTTOM, SIDE_TOP, Job, PowerBand,
-                            build_job, energy_mj_cm2)
+                            build_job, energy_mj_cm2, load_profile)
 from gerber2ldi.patterns import dose
 from gerber2ldi.source import load_layer
 
@@ -382,3 +390,97 @@ def test_row_speeds_must_match_the_rows(tmp_path, make_machine):
             speed_mm_s=job.speed_mm_s, s_value=500, power_fraction=0.5,
             side=job.side, process=job.process, v_values=(1.0, 2.0))
     assert job.row_speeds == (50.0,) * len(job.rows)
+
+
+# ── С3 of `plan_2026_10_23_dose_by_speed`: a laser that only switches ───────────────
+
+
+def _onoff(make_machine, profile_text, usable_fraction: str | None = None):
+    """The fixture machine with an on/off driver instead of a PWM one."""
+    text = profile_text.replace('modulation = "pwm"', 'modulation = "onoff"')
+    if usable_fraction is not None:
+        text = text.replace("usable_fraction = 0.8", f"usable_fraction = {usable_fraction}")
+    return make_machine(profile_text=text)
+
+
+def test_an_onoff_laser_refuses_a_power_fraction(tmp_path, make_machine, profile_text):
+    """C3: the driver holds the current, so a fraction has nothing to act on.
+
+    The refusal carries the way out — the speed is the dose there — instead of a clamp.
+    """
+    machine = _onoff(make_machine, profile_text)
+    with pytest.raises(JobError, match="vary --speeds"):
+        build_job(_layer(tmp_path, RECT), machine, power=0.5, spot_compensation=False)
+
+
+def test_an_onoff_laser_writes_s_max_and_ignores_usable_fraction(tmp_path, make_machine,
+                                                                 profile_text):
+    """`usable_fraction` caps a duty cycle an on/off driver does not have.
+
+    A ceiling of 0.1 would leave a PWM machine at S100; here every row gets S1000, and
+    leaving the power out is the normal case rather than a refusal.
+    """
+    machine = _onoff(make_machine, profile_text, usable_fraction="0.1")
+    job = build_job(_layer(tmp_path, RECT), machine, spot_compensation=False)
+    assert machine.laser.is_onoff
+    assert job.s_value == 1000
+    assert set(job.row_s_values) == {1000}
+    assert job.power_fraction is None
+    at_one = build_job(_layer(tmp_path, RECT), machine, power=1.0,
+                       spot_compensation=False)
+    assert at_one.s_value == 1000
+
+
+def test_an_onoff_laser_says_so_in_the_header(tmp_path, make_machine, profile_text):
+    """The only way to read why every S is the same number: the header says it."""
+    job = build_job(_layer(tmp_path, RECT), _onoff(make_machine, profile_text),
+                    spot_compensation=False)
+    assert any(note.startswith("laser: on/off, S = 1000") for note in job.notes)
+
+
+PWM_FLASH_CELLS = [("1000", "50", True), ("1000", "10", False)]
+
+
+@pytest.mark.parametrize("pwm_hz, speed, expected", PWM_FLASH_CELLS,
+                         ids=["50 um flash over 20 um rows", "10 um flash at 10 mm/s"])
+def test_the_pwm_flash_is_judged_against_the_row_step(tmp_path, make_machine,
+                                                      profile_text, pwm_hz, speed,
+                                                      expected):
+    """C3: the warning that was SILENT on the 22.10 plate, where no spot was measured.
+
+    A flash every `v / pwm_hz` longer than the row step means the edge of a lit strip is a
+    row of dashes: 50 mm/s at 1 kHz is 50 µm against 20 µm rows. The control is the same
+    laser at 10 mm/s — 10 µm, shorter than a row, and nothing is said.
+    """
+    text = (profile_text.replace("pwm_hz = 5000", f"pwm_hz = {pwm_hz}")
+            .replace("speed_mm_s = 50", f"speed_mm_s = {speed}"))
+    job = build_job(_layer(tmp_path, RECT), make_machine(profile_text=text), power=0.5)
+    said = any("PWM draws a flash" in warning for warning in job.warnings)
+    assert said is expected
+
+
+def test_the_pwm_flash_is_announced_on_the_real_profile(tmp_path):
+    """C3 on the REAL machine: 50 mm/s, 1000 Hz and 25 µm rows — the 22.10 plate itself."""
+    shipped = Path(__file__).resolve().parents[1] / "profiles" / "china_ldi_grbl.toml"
+    job = build_job(_layer(tmp_path, RECT), load_profile(shipped), power=0.5,
+                    spot_compensation=False)
+    assert any("PWM draws a flash every 50.0 um" in warning for warning in job.warnings)
+
+
+def test_the_diode_profile_writes_one_power_and_two_feeds():
+    """C2 + C3 on the real diode profile: tiles at 80 and 20 mm/s, S = 1000 on both.
+
+    This is the strip that goes onto the old table first: the dose is set by the speed,
+    the power word never changes, and the 14 mm strip covers the 12.8 mm the top speed
+    needs.
+    """
+    shipped = Path(__file__).resolve().parents[1] / "profiles" / "china_ldi_grbl_sld3232vf.toml"
+    machine = load_profile(shipped)
+    pattern = dose(machine, speeds=(80.0, 20.0), power=1.0)
+    job = build_job(pattern.layer, pattern.machine, power_bands=pattern.bands,
+                    spot_compensation=False)
+    assert set(job.row_s_values) == {1000}
+    assert set(job.row_speeds) == {80.0, 20.0}
+    assert job.speed_text == "20-80"
+    assert all(level.energy_mj_cm2 is None for level in job.doses)
+    assert "absolute dose unknown: power_w not measured" in "\n".join(render_gcode(job))
