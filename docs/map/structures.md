@@ -64,6 +64,10 @@ Job
                                    format_duration — ASCII для шапки, cli._duration — переводимые «мин»/«с»)
 ```
 
+Правило и счёт живут в `gerber2ldi/job/passes.py`: модульные `row_pass`, `pass_lengths`,
+`duration_parts`, `format_duration`; методы `Job.row_pass`/`Job.pass_lengths` — тонкие делегаты (вынесено из
+`job.py`, когда тот подходил к 600 строкам; поведения не меняло).
+
 Выход — `.nc` (G-code GRBL 1.1) и PNG-превью; оба строятся из `rows`, не из растра.
 
 ## Отверстия — `gerber2ldi/source/` (Ш2)

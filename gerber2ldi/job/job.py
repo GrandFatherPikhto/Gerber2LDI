@@ -14,6 +14,11 @@ HEADER NOTES (``notes``) are ASCII ENGLISH ON PURPOSE — they are written into 
 machine as question marks, so notes never go through ``_()``; messages for the
 operator on stdout and stderr do.
 
+THE PASS OF A ROW AND THE LENGTH OF THE RUN live in `job/passes.py` (Т1–Т2 of
+`plan_2026_10_22_trim_passes`): the header reports exactly the passes the writer writes,
+because both come from the same functions. `Job` keeps thin delegates (``row_pass``,
+``pass_lengths``), so a caller does not have to know which module the rule lives in.
+
 ORDER OF THE CHAIN — it is not arbitrary (Денис 20.10, design §17):
 
   1. raster (with ``y_scale``: a machine row samples the figure at
@@ -48,6 +53,7 @@ from ..i18n import _
 from ..raster import iter_rows
 from ..scan import ScanRow, apply_skew, compensate, invert, mirror, scale, shift
 from ..source import Layer
+from .passes import Box, format_duration, pass_lengths, row_pass
 from .profile import Machine
 
 PROCESS_ETCH = "etch-resist"
@@ -59,8 +65,6 @@ SIDE_BOTTOM = "bottom"
 SIDES = (SIDE_TOP, SIDE_BOTTOM)
 
 SUPPORTED_ORIGIN = "front-left"
-
-Box = tuple[float, float, float, float]
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,54 +89,6 @@ class Dose:
     y1_mm: float
     power: float
     s_value: int
-
-
-def _row_pass(row: ScanRow, overscan_mm: float) -> tuple[float, float] | None:
-    """The pass rule itself: the row's own copper plus the strip, or nothing at all.
-
-    Module level so that the length of the run can be counted BEFORE the job exists — the
-    header note is built in `build_job`, and it must count the same passes the writer
-    writes, not a second opinion about them.
-    """
-    if not row.segments:
-        return None
-    return (row.segments[0][0] - overscan_mm,
-            row.segments[-1][1] + overscan_mm)
-
-
-def _pass_lengths(rows: tuple[ScanRow, ...], overscan_mm: float,
-                  box: Box) -> tuple[float, float]:
-    """The run the head really travels, and the run it would travel at full width.
-
-    ``exposed`` sums the passes of the rows that have copper, run-ups included; a row with
-    nothing on it costs nothing, which is what the trimming bought. ``full_width`` is what
-    the SAME rows would cost if each of them crossed the whole job frame — the number the
-    operator compares against.
-    """
-    exposed = 0.0
-    for row in rows:
-        span = _row_pass(row, overscan_mm)
-        if span is not None:
-            exposed += span[1] - span[0]
-    frame = (box[2] + overscan_mm) - (box[0] - overscan_mm)
-    return exposed, len(rows) * frame
-
-
-def duration_parts(seconds: float) -> tuple[int, int]:
-    """(minutes, seconds) of a duration, whole seconds rounded DOWN — the line says ``>=``.
-
-    A fraction of a second would be a claim about a speed the machine was never measured
-    at; whole seconds below the estimate keep the promise true. The SPLIT lives here so
-    that the ASCII header and the translated stdout line cannot disagree about it — only
-    the words of the units differ (`format_duration` below, `cli._duration`).
-    """
-    return divmod(int(seconds), 60)
-
-
-def format_duration(seconds: float) -> str:
-    """ASCII ``4 min 06 s`` (or ``48 s``) for the ``.nc`` header, which is never translated."""
-    minutes, rest = duration_parts(seconds)
-    return f"{minutes} min {rest:02d} s" if minutes else f"{rest} s"
 
 
 @dataclass(frozen=True, slots=True)
@@ -208,11 +164,11 @@ class Job:
         coordinates. The pass of a row always runs in +X, so the slack of the belt is
         taken up by the run-up in the same direction every time.
         """
-        return _row_pass(row, self.overscan_mm)
+        return row_pass(row, self.overscan_mm)
 
     def pass_lengths(self) -> tuple[float, float]:
         """(exposed run, full-width run) in millimetres — both from :meth:`row_pass`."""
-        return _pass_lengths(self.rows, self.overscan_mm, self.box)
+        return pass_lengths(self.rows, self.overscan_mm, self.box)
 
     @property
     def segment_count(self) -> int:
@@ -547,7 +503,7 @@ def build_job(layer: Layer, machine: Machine, *, side: str = SIDE_TOP,
     # (the file is written with encoding="ascii"); the time is a LOWER bound on purpose —
     # the rapids, the accelerations and M4/M5 are not in it, and the profile has no G0
     # speed to count them with.
-    exposed, full_width = _pass_lengths(rows, overscan, ink)
+    exposed, full_width = pass_lengths(rows, overscan, ink)
     share = (exposed / full_width - 1.0) * 100.0 if full_width else 0.0
     header.append(f"passes: {exposed:.1f} mm exposed run "
                   f"(full-width would be {full_width:.1f} mm, {share:+.0f}%), "
