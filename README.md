@@ -126,6 +126,11 @@ gerber2ldi job B_Cu.gbr --profile profiles/china_ldi_grbl.toml \
   edge on `Y`. Use ONE `--place` for both sides. KiCad writes negative Y coordinates;
   the program places the frame on the table and checks the whole pass, run-up included,
   against the table. Without `--place` the frame goes to the origin.
+* every row is exposed from one overscan BEFORE its own first lit pixel to one overscan
+  past its last one, always towards +X, and a row with nothing on it is not travelled at
+  all. The run-up takes up the belt slack in the same direction every time, and nothing
+  moves: `--frame` and `--place` place the figure exactly as before — only the idle ends
+  of the rows are gone.
 
 **Two sides line up only through the frame and the blank's stop.** Expose the first
 side, turn the blank over left to right against the same stop, expose the second. There

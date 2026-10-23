@@ -127,19 +127,43 @@ class Job:
     def feed_mm_per_min(self) -> float:
         """GRBL's ``F`` is millimetres per MINUTE; the profile speaks mm/s.
 
-        The conversion lives here and only here: writing ``F50`` for 50 mm/s runs
-        the machine sixty times slower and deposits sixty times the dose.
+        The conversion lives here and only here: writing ``F50`` for 50 mm/s runs the
+        machine sixty times slower and deposits sixty times the dose.
         """
         return self.speed_mm_s * 60.0
 
     @property
     def pass_start_x(self) -> float:
-        """Where the run-up begins: the figure edge minus the strip."""
+        """The JOB frame: the figure edge minus the strip (table check and placement).
+
+        Not the pass of a single row — :meth:`row_pass` is.
+        """
         return self.box[0] - self.overscan_mm
 
     @property
     def pass_end_x(self) -> float:
         return self.box[2] + self.overscan_mm
+
+    def row_pass(self, row: ScanRow) -> tuple[float, float] | None:
+        """Where THIS row's pass begins and ends, or ``None`` when the row is empty.
+
+        The strip before the first segment and after the last one is the run-up: the
+        laser must already be at full speed on the first lit pixel and keep it past the
+        last one (design §4.2). Everything beyond that strip is travel over empty table —
+        the job used to cross the whole frame on every row, so a row with one pad at the
+        left edge drove the full width of the board and came back (Денис 22.10: the
+        exposure took as long as the pocket in GGEasy).
+
+        ``pass_start_x``/``pass_end_x`` stay the JOB frame: the table check and the
+        placement are computed from it, so trimming a row never moves the figure, and a
+        new program with the same ``--place`` still puts the copper in the same machine
+        coordinates. The pass of a row always runs in +X, so the slack of the belt is
+        taken up by the run-up in the same direction every time.
+        """
+        if not row.segments:
+            return None
+        return (row.segments[0][0] - self.overscan_mm,
+                row.segments[-1][1] + self.overscan_mm)
 
     @property
     def segment_count(self) -> int:

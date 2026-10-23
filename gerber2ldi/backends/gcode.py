@@ -4,12 +4,20 @@
 The shape of a pass, per row — the M4 IS THE POINT:
 
     M5                          laser off before the rapid
-    G0 X<run-up start> Y<row>   rapid to the strip in front of the figure
+    G0 X<run-up start> Y<row>   rapid to the strip in front of THIS row's copper
     M4 S0                       laser MODE ON at zero power
-    G1 X<x0> S0                 travel to the first segment
+    G1 X<x0> S0                 the run-up: exactly overscan_mm to the first segment
     G1 X<x1> S<s>               draw at working power
     ...                         (S0 travel between segments when needed)
-    G1 X<run-up end> S0         run out past the figure, constant speed
+    G1 X<run-up end> S0         run out past the last segment, constant speed
+
+The pass belongs to the ROW, not to the job frame (``Job.row_pass``): it starts one
+``overscan_mm`` before the row's first lit pixel and ends one ``overscan_mm`` after its
+last one. The job frame (``pass_start_x``/``pass_end_x``) is what the table check and the
+placement are computed from, so trimming never moves the figure. A row with no copper at
+all gets NO pass — no rapid, no ``M4``: the head stays where the previous row left it, and
+the next ``G0`` is a diagonal, which GRBL takes in one move. Every pass runs in +X, so the
+run-up takes up the belt slack in the same direction on every row.
 
 Without `M4` after `M5`, a `G1 … S<s>` does NOT switch the laser on: `M5` leaves
 laser mode, and GRBL then ignores the S word. The first generated program had one
@@ -75,17 +83,21 @@ def render_gcode(job) -> list[str]:
     lines.extend(_comment(note) for note in job.notes)
     lines.extend(["G21", "G90", f"F{gc_number(job.feed_mm_per_min)}"])
     for row, s_value in zip(job.rows, job.row_s_values):
+        span = job.row_pass(row)
+        if span is None:
+            continue                    # nothing to expose on this row: no travel at all
+        pass_start, pass_end = span
         lines.append("M5")
-        lines.append(f"G0 X{gc_number(job.pass_start_x)} Y{gc_number(row.y_mm)}")
+        lines.append(f"G0 X{gc_number(pass_start)} Y{gc_number(row.y_mm)}")
         lines.append("M4 S0")
-        position = job.pass_start_x
+        position = pass_start
         for start, end in row.segments:
             if start > position:
                 lines.append(f"G1 X{gc_number(start)} S0")
             lines.append(f"G1 X{gc_number(end)} S{s_value}")
             position = end
-        if job.pass_end_x > position:
-            lines.append(f"G1 X{gc_number(job.pass_end_x)} S0")
+        if pass_end > position:
+            lines.append(f"G1 X{gc_number(pass_end)} S0")
     lines.append("M5")
     return lines
 
