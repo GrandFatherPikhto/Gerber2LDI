@@ -16,11 +16,18 @@ Cells closed here:
     пятно не измерено           отказ; с --no-spot-compensation работаем и предупреждаем
     ШИМ крупнее пятна           предупреждение строкой
     пусто после преобразований  отказ, а не пустой файл
+    скорость полосы (С2)        скорость полосы проходит ОДНО правило профиля: 80 мм/с
+                                при полосе 5 мм и 100 мм/с при пределе 83.333 — отказы
+                                с числами полосы; 0 мм/с — отказ
+    доза полосы (С2)            скорость, относительная доза и E на каждую полосу;
+                                E — по канону §18.3 (5 мВт, 50 мм/с, 25 мкм = 400 мДж/см²)
 """
 import pytest
 
 from gerber2ldi.errors import JobError
-from gerber2ldi.job import PROCESS_PLATING, SIDE_BOTTOM, SIDE_TOP, build_job
+from gerber2ldi.job import (PROCESS_PLATING, SIDE_BOTTOM, SIDE_TOP, Job, PowerBand,
+                            build_job, energy_mj_cm2)
+from gerber2ldi.patterns import dose
 from gerber2ldi.source import load_layer
 
 HEADER = "%FSLAX46Y46*%\n%MOMM*%\n%TF.FileFunction,Copper,L1,Top*%\n"
@@ -292,3 +299,86 @@ def test_wide_figure_plus_run_up_refuses_with_numbers(tmp_path, make_machine):
         job = build_job(_layer(tmp_path, WIDE), make_machine(), power=0.5,
                         spot_compensation=False)
     assert job is None, "nothing may be built when the pass leaves the table"
+
+
+def test_energy_mj_cm2_is_the_canon_number():
+    """C2: `E = P/(v·Δy)` is J/m² and 1 J/m² = 0.1 mJ/cm² — hence the single 1e5.
+
+    The numbers are the canon's own example (design §18.3): 5 mW at 50 mm/s over 25 µm
+    rows is 400 mJ/cm². Halving the speed doubles the dose, halving the power halves it,
+    and an unmeasured power is `None` — never a zero that reads like a measurement.
+    """
+    assert energy_mj_cm2(0.005, 1.0, 50.0, 0.025) == pytest.approx(400.0)
+    assert energy_mj_cm2(0.005, 1.0, 25.0, 0.025) == pytest.approx(800.0)
+    assert energy_mj_cm2(0.005, 0.5, 50.0, 0.025) == pytest.approx(200.0)
+    assert energy_mj_cm2(0.0, 1.0, 50.0, 0.025) is None
+
+
+def _measured_machine(make_machine, profile_text):
+    """5 mW measured and 25 µm rows — the canon's numbers, so the dose cells are readable."""
+    text = (profile_text.replace("power_w = 0.5", "power_w = 0.005")
+            .replace("steps_per_mm_y = 50", "steps_per_mm_y = 80")
+            .replace("row_step_um = 20", "row_step_um = 25"))
+    return make_machine(profile_text=text)
+
+
+def test_a_dose_band_carries_its_speed_relative_dose_and_energy(make_machine,
+                                                               profile_text):
+    """C2: the band's speed is the dose. Tiles at 50 and 25 mm/s, power 0.8.
+
+    Relative dose 0.8 and 1.6 (the slower tile is lit twice as long), and 320 / 640
+    mJ/cm² from the canon formula. The ROWS carry the speed in the same shape as `S`.
+    """
+    machine = _measured_machine(make_machine, profile_text)
+    pattern = dose(machine, speeds=(50.0, 25.0), power=0.8)
+    job = build_job(pattern.layer, pattern.machine, power_bands=pattern.bands,
+                    spot_compensation=False)
+    assert [level.speed_mm_s for level in job.doses] == [50.0, 25.0]
+    assert [level.relative_dose for level in job.doses] == [pytest.approx(0.8),
+                                                            pytest.approx(1.6)]
+    assert [level.energy_mj_cm2 for level in job.doses] == [pytest.approx(320.0),
+                                                            pytest.approx(640.0)]
+    assert len(job.row_speeds) == len(job.rows)
+    assert set(job.row_speeds) == {50.0, 25.0}
+    # One power word for the whole strip: only the speed differs between the tiles.
+    assert set(job.row_s_values) == {800}
+
+
+def test_a_band_speed_the_machine_cannot_run_is_refused(make_machine):
+    """C1's rule, applied to a BAND, with the band's numbers and before any file exists.
+
+    80 mm/s at 500 mm/s² needs 6.4 mm of run-up; the fixture's strip is 5 mm.
+    """
+    machine = make_machine()
+    pattern = dose(machine, speeds=(80.0, 20.0), power=0.5)
+    with pytest.raises(JobError, match="needs 6.4 mm"):
+        build_job(pattern.layer, machine, power_bands=pattern.bands,
+                  spot_compensation=False)
+
+
+def test_a_band_speed_above_the_limit_names_the_field(make_machine):
+    """The limit branch, not the run-up one: the refusal names the profile field."""
+    machine = make_machine()
+    pattern = dose(machine, speeds=(100.0, 20.0), power=0.5)
+    with pytest.raises(JobError, match="machine.max_rate_x_mm_s"):
+        build_job(pattern.layer, machine, power_bands=pattern.bands,
+                  spot_compensation=False)
+
+
+def test_a_band_speed_of_zero_is_refused(tmp_path, make_machine):
+    """A band's data is checked like any other: a speed of 0 has no dose to speak of."""
+    with pytest.raises(JobError, match="must be above zero"):
+        build_job(_layer(tmp_path, RECT), make_machine(),
+                  power_bands=(PowerBand(0.0, 2.0, 0.5, 0.0),),
+                  spot_compensation=False)
+
+
+def test_row_speeds_must_match_the_rows(tmp_path, make_machine):
+    """Same invariant as the per-row powers: a speed list that missed a row would lie."""
+    job = build_job(_layer(tmp_path, RECT), make_machine(), power=0.5,
+                    spot_compensation=False)
+    with pytest.raises(JobError, match="row speeds"):
+        Job(rows=job.rows, box=job.box, overscan_mm=job.overscan_mm,
+            speed_mm_s=job.speed_mm_s, s_value=500, power_fraction=0.5,
+            side=job.side, process=job.process, v_values=(1.0, 2.0))
+    assert job.row_speeds == (50.0,) * len(job.rows)

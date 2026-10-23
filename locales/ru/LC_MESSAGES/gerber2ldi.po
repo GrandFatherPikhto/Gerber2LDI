@@ -245,8 +245,38 @@ msgstr "ряду дозы нужно не меньше двух уровней, 
 msgid "Use either --powers or --from/--to/--count, not both"
 msgstr "Либо --powers, либо --from/--to/--count — не вместе"
 
-msgid "A dose strip needs its levels: --powers 0.02,0.03,... or --from, --to and --count"
-msgstr "Полоске дозы нужны уровни: --powers 0.02,0.03,... или --from, --to и --count"
+msgid "A dose strip needs its levels: --powers 0.02,0.03,... or --from/--to/--count, or --speeds 80,50,... with --power"
+msgstr "Полоске дозы нужны уровни: --powers 0.02,0.03,... или --from/--to/--count, или --speeds 80,50,... вместе с --power"
+
+msgid "Use either powers (--powers, --from/--to) or speeds (--speeds, --speed-from/--speed-to), not both"
+msgstr "Либо мощности (--powers, --from/--to), либо скорости (--speeds, --speed-from/--speed-to) — не вместе"
+
+msgid "Use either --speeds or --speed-from/--speed-to/--count, not both"
+msgstr "Либо --speeds, либо --speed-from/--speed-to/--count — не вместе"
+
+msgid "--speed-from, --speed-to and --count go together: one of them is missing"
+msgstr "--speed-from, --speed-to и --count идут вместе: одного из них не хватает"
+
+msgid "expected a positive speed in mm/s, got {value}"
+msgstr "ожидалась положительная скорость в мм/с, пришло {value}"
+
+msgid "speeds: {error}"
+msgstr "скорости: {error}"
+
+msgid "at least one speed is required"
+msgstr "нужна хотя бы одна скорость"
+
+msgid "one power fraction for all tiles of a speed strip"
+msgstr "одна доля мощности на все плитки полоски по скорости"
+
+msgid "speeds in mm/s, comma separated, bottom to top (falling)"
+msgstr "скорости в мм/с через запятую, снизу вверх (убывающие)"
+
+msgid "fastest speed of a geometric series, mm/s"
+msgstr "самая быстрая скорость геометрической серии, мм/с"
+
+msgid "slowest speed of the series, mm/s"
+msgstr "самая медленная скорость серии, мм/с"
 
 msgid "--from, --to and --count go together: one of them is missing"
 msgstr "--from, --to и --count идут вместе: одного из них не хватает"
@@ -257,11 +287,17 @@ msgstr "Штрихи: ширины в фиксированном порядке 
 msgid "Layout: horizontal groups at the bottom left (along X: Y resolution), vertical groups to their right (along Y: X resolution)"
 msgstr "Раскладка: горизонтальные группы слева внизу (вдоль X: разрешение по Y), вертикальные справа от них (вдоль Y: разрешение по X)"
 
-msgid "Dose strip: {count} tiles bottom to top, each with its own power"
-msgstr "Полоска дозы: {count} прямоугольников снизу вверх, у каждого своя мощность"
+msgid "Dose strip: {count} tiles bottom to top, each with its own dose level"
+msgstr "Полоска дозы: {count} прямоугольников снизу вверх, у каждого свой уровень дозы"
 
-msgid "  {index}: y {y0} … {y1} mm, power {power}, S {s}"
-msgstr "  {index}: y {y0} … {y1} мм, мощность {power}, S {s}"
+msgid "  {index}: y {y0} … {y1} mm, power {power}, S {s}, speed {speed} mm/s, relative dose {dose}"
+msgstr "  {index}: y {y0} … {y1} мм, мощность {power}, S {s}, скорость {speed} мм/с, относительная доза {dose}"
+
+msgid "  {index}: E {energy} mJ/cm2 (power_w over speed and row step)"
+msgstr "  {index}: E {energy} мДж/см² (power_w на скорость и шаг строк)"
+
+msgid "absolute dose unknown: power_w not measured"
+msgstr "абсолютная доза неизвестна: power_w не измерена"
 
 msgid "Square {side} mm, line {width} mm, calibration {state}"
 msgstr "Квадрат {side} мм, линия {width} мм, калибровка: {state}"
@@ -433,3 +469,12 @@ msgstr "Полоса разгона {overscan} мм (scan.overscan_mm) коро�
 
 msgid "Profile {path}: {problem}"
 msgstr "Профиль {path}: {problem}"
+
+msgid "The job carries {given} row speeds for {rows} rows"
+msgstr "В задании {given} скоростей строк на {rows} строк"
+
+msgid "Dose band {y0} … {y1} mm asks for {speed} mm/s: the speed must be above zero"
+msgstr "Полоса дозы {y0} … {y1} мм просит {speed} мм/с: скорость должна быть больше нуля"
+
+msgid "Dose band {y0} … {y1} mm: {problem}"
+msgstr "Полоса дозы {y0} … {y1} мм: {problem}"

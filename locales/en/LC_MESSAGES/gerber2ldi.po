@@ -245,7 +245,37 @@ msgstr ""
 msgid "Use either --powers or --from/--to/--count, not both"
 msgstr ""
 
-msgid "A dose strip needs its levels: --powers 0.02,0.03,... or --from, --to and --count"
+msgid "A dose strip needs its levels: --powers 0.02,0.03,... or --from/--to/--count, or --speeds 80,50,... with --power"
+msgstr ""
+
+msgid "Use either powers (--powers, --from/--to) or speeds (--speeds, --speed-from/--speed-to), not both"
+msgstr ""
+
+msgid "Use either --speeds or --speed-from/--speed-to/--count, not both"
+msgstr ""
+
+msgid "--speed-from, --speed-to and --count go together: one of them is missing"
+msgstr ""
+
+msgid "expected a positive speed in mm/s, got {value}"
+msgstr ""
+
+msgid "speeds: {error}"
+msgstr ""
+
+msgid "at least one speed is required"
+msgstr ""
+
+msgid "one power fraction for all tiles of a speed strip"
+msgstr ""
+
+msgid "speeds in mm/s, comma separated, bottom to top (falling)"
+msgstr ""
+
+msgid "fastest speed of a geometric series, mm/s"
+msgstr ""
+
+msgid "slowest speed of the series, mm/s"
 msgstr ""
 
 msgid "--from, --to and --count go together: one of them is missing"
@@ -257,10 +287,16 @@ msgstr ""
 msgid "Layout: horizontal groups at the bottom left (along X: Y resolution), vertical groups to their right (along Y: X resolution)"
 msgstr ""
 
-msgid "Dose strip: {count} tiles bottom to top, each with its own power"
+msgid "Dose strip: {count} tiles bottom to top, each with its own dose level"
 msgstr ""
 
-msgid "  {index}: y {y0} … {y1} mm, power {power}, S {s}"
+msgid "  {index}: y {y0} … {y1} mm, power {power}, S {s}, speed {speed} mm/s, relative dose {dose}"
+msgstr ""
+
+msgid "  {index}: E {energy} mJ/cm2 (power_w over speed and row step)"
+msgstr ""
+
+msgid "absolute dose unknown: power_w not measured"
 msgstr ""
 
 msgid "Square {side} mm, line {width} mm, calibration {state}"
@@ -432,4 +468,13 @@ msgid "A run-up of {overscan} mm (scan.overscan_mm) is too short for {speed} mm/
 msgstr ""
 
 msgid "Profile {path}: {problem}"
+msgstr ""
+
+msgid "The job carries {given} row speeds for {rows} rows"
+msgstr ""
+
+msgid "Dose band {y0} … {y1} mm asks for {speed} mm/s: the speed must be above zero"
+msgstr ""
+
+msgid "Dose band {y0} … {y1} mm: {problem}"
 msgstr ""

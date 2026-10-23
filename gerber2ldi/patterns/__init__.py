@@ -19,7 +19,8 @@ rectangle with lines so that the whole area can be inspected after development.
 """
 from .bars import DEFAULT_LENGTH_MM, DEFAULT_WIDTHS_MM, bars
 from .base import Pattern, calibration_note
-from .dose import DEFAULT_TILE_HEIGHT_MM, DEFAULT_TILE_WIDTH_MM, dose, powers_from_series
+from .dose import (DEFAULT_TILE_HEIGHT_MM, DEFAULT_TILE_WIDTH_MM, dose, powers_from_series,
+                   speeds_from_series)
 from .grid import (DEFAULT_GRID_GAP_MM, DEFAULT_GRID_HEIGHT_MM, DEFAULT_GRID_LINE_MM,
                    DEFAULT_GRID_WIDTH_MM, GRID_DIRECTIONS, fit_lines, grid)
 from .square import (DEFAULT_LINE_WIDTH_MM, DEFAULT_SIDE_MM, SquareMeasurement,
@@ -49,6 +50,7 @@ __all__ = [
     "measure_from_rows",
     "powers_from_series",
     "skew_from_diagonals",
+    "speeds_from_series",
     "square",
     "update_formulas",
     "without_calibration",

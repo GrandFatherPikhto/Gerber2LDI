@@ -8,6 +8,13 @@ found during the raster, where the Y calibration already knows which figure heig
 commanded row covers. Bands are refused together with spot compensation: that step
 adds and removes rows, so a band would no longer own its rows.
 
+SPEED PER ROW has the same shape and the same reason. With an on/off laser the power
+word is fixed and the DOSE is set by how fast the head moves, so a band may carry
+``speed_mm_s`` (``None`` means the profile's own speed) and the job carries ``v_values``
+beside ``s_values``. Both shapes go through the same two hard limits before a byte of
+the program exists: ``_s_value`` for the power ceiling and ``Machine.speed_problem`` for
+the speed limit and the run-up.
+
 HEADER NOTES (``notes``) are ASCII ENGLISH ON PURPOSE — they are written into the
 ``.nc`` file, which :func:`~gerber2ldi.backends.gcode.write_gcode` writes with
 ``encoding="ascii"``. A translated note would either break the write or reach the
@@ -53,7 +60,7 @@ from ..i18n import _
 from ..raster import iter_rows
 from ..scan import ScanRow, apply_skew, compensate, invert, mirror, scale, shift
 from ..source import Layer
-from .passes import Box, format_duration, pass_lengths, row_pass
+from .passes import Box, exposed_time_s, format_duration, pass_lengths, row_pass
 from .profile import Machine
 
 PROCESS_ETCH = "etch-resist"
@@ -74,29 +81,84 @@ class PowerBand:
     Figure millimetres, not machine ones: the band belongs to the geometry, and the
     row that covers it is found during the raster. Bands must be sorted and must not
     overlap — a row belongs to exactly one of them (half-open on the upper edge).
+
+    ``speed_mm_s`` is how fast the head crosses this band; ``None`` keeps the profile's
+    speed. A dose strip by speed varies this and fixes the power — the shape an on/off
+    laser needs, where the power word is a constant.
     """
 
     y0_mm: float
     y1_mm: float
     power: float
+    speed_mm_s: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class Dose:
-    """A band with the ``S`` the machine will see — printed out and in the header."""
+    """A band with everything the machine will see — printed out and in the header.
+
+    ``relative_dose`` is ``power · v_ref / v``: 1.0 anywhere on the profile's own speed,
+    above 1 where the head is slower than the profile. It answers "how much more light
+    did this band get" without knowing the optical power, which is why it exists at all.
+    ``energy_mj_cm2`` is the absolute number and is ``None`` while ``laser.power_w`` has
+    never been measured — an unknown is not a zero.
+    """
 
     y0_mm: float
     y1_mm: float
     power: float
     s_value: int
+    speed_mm_s: float
+    relative_dose: float
+    energy_mj_cm2: float | None
+
+
+def feed_mm_per_min(speed_mm_s: float) -> float:
+    """GRBL's ``F`` is millimetres per MINUTE; the profile speaks mm/s.
+
+    The conversion lives here and only here: writing ``F50`` for 50 mm/s runs the machine
+    sixty times slower and deposits sixty times the dose.
+    """
+    return speed_mm_s * 60.0
+
+
+def speed_text(speeds: tuple[float, ...]) -> str:
+    """``50`` for one speed, ``25-50`` when the rows differ.
+
+    ASCII on purpose: this text goes into the ``.nc`` header, which is written with
+    ``encoding="ascii"`` — an ellipsis (``…``) between the numbers makes the whole file
+    unwritable, and `gcode._comment` refuses it before the machine sees a mojibake.
+    """
+    low, high = min(speeds), max(speeds)
+    return f"{low:g}" if low == high else f"{low:g}-{high:g}"
+
+
+def energy_mj_cm2(power_w: float, power: float, speed_mm_s: float,
+                  row_step_mm: float) -> float | None:
+    """Surface dose of a filled band in mJ/cm², or ``None`` when the power is unknown.
+
+    ``E = P / (v · Δy)`` is J/m² (design §18.3) and 1 J/m² = 0.1 mJ/cm², so with watts,
+    mm/s and millimetres the factor is ``1e5``:
+
+        5 mW at 50 mm/s over 25 µm rows -> 1e5 · 5e-3 / (50 · 0.025) = 400 mJ/cm²
+
+    — the number the canon states for exactly those inputs, hence the cell that pins this
+    formula. ``power`` is the fraction of the module in use (1.0 for an on/off laser). An
+    unmeasured ``power_w`` returns ``None``: the caller prints "unknown", not a zero that
+    looks like a measurement.
+    """
+    if power_w <= 0.0:
+        return None
+    return 1e5 * power_w * power / (speed_mm_s * row_step_mm)
 
 
 @dataclass(frozen=True, slots=True)
 class Job:
     """Machine-space rows plus everything the G-code writer needs.
 
-    ``s_values`` is the power PER ROW, empty for a uniform job where ``s_value``
-    covers every row. :attr:`row_s_values` gives the writer one shape for both cases.
+    ``s_values`` is the power PER ROW and ``v_values`` the speed PER ROW; both are empty
+    for a uniform job, where ``s_value`` and ``speed_mm_s`` cover every row.
+    :attr:`row_s_values` and :attr:`row_speeds` give the writer one shape for both cases.
     ``frame_box`` is the board outline in machine coordinates when the caller passed
     one — the thing both sides are mirrored and placed by.
     """
@@ -112,6 +174,7 @@ class Job:
     place_mm: tuple[float, float] = (0.0, 0.0)
     warnings: tuple[str, ...] = ()
     s_values: tuple[int, ...] = ()
+    v_values: tuple[float, ...] = ()
     doses: tuple[Dose, ...] = ()
     notes: tuple[str, ...] = ()
     frame_box: Box | None = None
@@ -121,6 +184,10 @@ class Job:
             raise JobError(
                 _("The job carries {given} row powers for {rows} rows")
                 .format(given=len(self.s_values), rows=len(self.rows)))
+        if self.v_values and len(self.v_values) != len(self.rows):
+            raise JobError(
+                _("The job carries {given} row speeds for {rows} rows")
+                .format(given=len(self.v_values), rows=len(self.rows)))
 
     @property
     def row_s_values(self) -> tuple[int, ...]:
@@ -128,13 +195,29 @@ class Job:
         return self.s_values or (self.s_value,) * len(self.rows)
 
     @property
-    def feed_mm_per_min(self) -> float:
-        """GRBL's ``F`` is millimetres per MINUTE; the profile speaks mm/s.
+    def row_speeds(self) -> tuple[float, ...]:
+        """One speed per row: the band value, or the uniform one repeated."""
+        return self.v_values or (self.speed_mm_s,) * len(self.rows)
 
-        The conversion lives here and only here: writing ``F50`` for 50 mm/s runs the
-        machine sixty times slower and deposits sixty times the dose.
-        """
-        return self.speed_mm_s * 60.0
+    @property
+    def row_feeds_mm_per_min(self) -> tuple[float, ...]:
+        """One ``F`` per row, converted by the same `feed_mm_per_min` as the header's."""
+        return tuple(feed_mm_per_min(speed) for speed in self.row_speeds)
+
+    @property
+    def feed_mm_per_min(self) -> float:
+        """The header's ``F``: the profile speed, in millimetres per MINUTE."""
+        return feed_mm_per_min(self.speed_mm_s)
+
+    @property
+    def duration_s(self) -> float:
+        """Seconds of lit travel, each row at ITS OWN speed — a lower bound."""
+        return exposed_time_s(self.rows, self.overscan_mm, self.row_speeds)
+
+    @property
+    def speed_text(self) -> str:
+        """``50`` for one speed, ``25-50`` when the rows differ — ASCII, for the header."""
+        return speed_text(self.row_speeds)
 
     @property
     def pass_start_x(self) -> float:
@@ -222,6 +305,11 @@ def _check_bands(bands: tuple[PowerBand, ...]) -> None:
             raise JobError(
                 _("Power band {y0} … {y1} mm asks for {power}: the fraction must be above zero")
                 .format(y0=band.y0_mm, y1=band.y1_mm, power=band.power))
+        if band.speed_mm_s is not None and (not math.isfinite(band.speed_mm_s)
+                                            or band.speed_mm_s <= 0.0):
+            raise JobError(
+                _("Dose band {y0} … {y1} mm asks for {speed} mm/s: the speed must be above zero")
+                .format(y0=band.y0_mm, y1=band.y1_mm, speed=band.speed_mm_s))
         if previous is not None and band.y0_mm < previous.y1_mm:
             raise JobError(
                 _("Power bands {a0} … {a1} and {b0} … {b1} mm overlap")
@@ -231,11 +319,28 @@ def _check_bands(bands: tuple[PowerBand, ...]) -> None:
 
 
 def _doses(bands: tuple[PowerBand, ...], machine: Machine) -> tuple[Dose, ...]:
-    """Bands → bands with the ``S`` word; every level passes the ceiling check."""
+    """Bands → bands with ``S``, the speed, the relative dose and the energy.
+
+    Both hard limits are applied HERE, before a byte of the program exists: the power
+    ceiling (`_s_value`) and the profile's single speed rule (`Machine.speed_problem` —
+    the same one that judged the profile's own speed). A band whose speed the controller
+    would cut, or whose run-up is too short, is a refusal carrying the band's numbers.
+    """
     _check_bands(bands)
-    return tuple(Dose(band.y0_mm, band.y1_mm, band.power,
-                      _s_value(band.power, machine))
-                 for band in bands)
+    reference = machine.scan.speed_mm_s
+    doses = []
+    for band in bands:
+        speed = band.speed_mm_s if band.speed_mm_s is not None else reference
+        problem = machine.speed_problem(speed)
+        if problem is not None:
+            raise JobError(_("Dose band {y0} … {y1} mm: {problem}")
+                           .format(y0=band.y0_mm, y1=band.y1_mm, problem=problem))
+        doses.append(Dose(band.y0_mm, band.y1_mm, band.power,
+                          _s_value(band.power, machine), speed,
+                          band.power * reference / speed,
+                          energy_mj_cm2(machine.laser.power_w, band.power, speed,
+                                        machine.scan.row_step_mm)))
+    return tuple(doses)
 
 
 def _band_index(figure_y_mm: float, doses: tuple[Dose, ...]) -> int | None:
@@ -370,6 +475,7 @@ def build_job(layer: Layer, machine: Machine, *, side: str = SIDE_TOP,
     # order and the count of the rows (compensation, which does not, is refused).
     rows_list: list[ScanRow] = []
     s_rows: list[int] = []
+    v_rows: list[float] = []
     band_rows = [0] * len(doses)
     for row in iter_rows(layer.shapes, machine_box,
                          machine.scan.row_step_mm, y_scale=y_scale):
@@ -384,9 +490,11 @@ def build_job(layer: Layer, machine: Machine, *, side: str = SIDE_TOP,
                     _("Row at {y} mm exposes copper outside every power band: the pattern and its bands disagree")
                     .format(y=round(row.y_mm, 3)))
             s_rows.append(0)
+            v_rows.append(machine.scan.speed_mm_s)
             continue
         band_rows[index] += 1
         s_rows.append(doses[index].s_value)
+        v_rows.append(doses[index].speed_mm_s)
     for dose, count in zip(doses, band_rows):
         if count == 0:
             raise JobError(
@@ -471,8 +579,13 @@ def build_job(layer: Layer, machine: Machine, *, side: str = SIDE_TOP,
             _("{count} segments are shorter than the X motor step {step} mm: their edges snap to it, so the exposed ends move by up to half a step")
             .format(count=short, step=round(step_x, 4)))
 
+    # The fastest row is the one to judge: it has the shortest PWM period on the spot
+    # check and the widest flash spacing on the row-step check, so a warning it triggers
+    # covers every slower row of the same job.
+    row_speeds = tuple(v_rows) if doses else (machine.scan.speed_mm_s,) * len(rows)
+    fastest = max(row_speeds)
     if radius is not None:
-        period = machine.scan.speed_mm_s / machine.laser.pwm_hz
+        period = fastest / machine.laser.pwm_hz
         if period > radius:
             warnings.append(
                 _("PWM period {period} mm is wider than the spot radius {radius} mm: dashes, not a line")
@@ -494,9 +607,22 @@ def build_job(layer: Layer, machine: Machine, *, side: str = SIDE_TOP,
     header.append(f"GRBL: $32=1 (laser mode), "
                   f"$30={machine.laser.s_max:.0f} "
                   f"(max spindle speed: the power word is a fraction of it)")
+    if doses:
+        # The unit of the relative dose, stated ONCE for the whole strip: it is the number
+        # the operator compares tiles by, and without the reference speed it means nothing.
+        header.append(f"doses: relative dose = power x "
+                      f"{machine.scan.speed_mm_s:g} mm/s / row speed "
+                      f"(the profile's own speed is {machine.scan.speed_mm_s:g} mm/s)")
     for index, dose in enumerate(doses, start=1):
-        header.append(f"dose {index}/{len(doses)}: y {dose.y0_mm:.3f}-{dose.y1_mm:.3f} mm "
-                      f"(figure), power {dose.power:.4f}, S {dose.s_value}")
+        line = (f"dose {index}/{len(doses)}: y {dose.y0_mm:.3f}-{dose.y1_mm:.3f} mm "
+                f"(figure), power {dose.power:.4f}, S {dose.s_value}, "
+                f"speed {dose.speed_mm_s:g} mm/s, relative dose {dose.relative_dose:.3f}")
+        if dose.energy_mj_cm2 is not None:
+            line += f", E {dose.energy_mj_cm2:.1f} mJ/cm2"
+        header.append(line)
+    if doses and machine.laser.power_w <= 0.0:
+        # Not a zero: nobody has measured the optical power, and a zero would read as one.
+        header.append("absolute dose unknown: power_w not measured")
 
     # What the trimming bought, in ONE line: the run the head really travels against the
     # run the same rows would cost at full width. ASCII English like every header note
@@ -505,15 +631,17 @@ def build_job(layer: Layer, machine: Machine, *, side: str = SIDE_TOP,
     # speed to count them with.
     exposed, full_width = pass_lengths(rows, overscan, ink)
     share = (exposed / full_width - 1.0) * 100.0 if full_width else 0.0
+    duration = exposed_time_s(rows, overscan, row_speeds)
     header.append(f"passes: {exposed:.1f} mm exposed run "
                   f"(full-width would be {full_width:.1f} mm, {share:+.0f}%), "
-                  f">= {format_duration(exposed / machine.scan.speed_mm_s)} "
-                  f"at {machine.scan.speed_mm_s:g} mm/s")
+                  f">= {format_duration(duration)} "
+                  f"at {speed_text(row_speeds)} mm/s")
 
     return Job(rows=rows, box=ink, overscan_mm=overscan,
                speed_mm_s=machine.scan.speed_mm_s,
                s_value=s_value if power is not None else max(d.s_value for d in doses),
                power_fraction=power, side=side, process=process,
                place_mm=(place_x, place_y), warnings=tuple(warnings),
-               s_values=tuple(s_rows) if doses else (), doses=doses,
+               s_values=tuple(s_rows) if doses else (),
+               v_values=tuple(v_rows) if doses else (), doses=doses,
                notes=tuple(header), frame_box=frame_box)

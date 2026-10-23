@@ -313,3 +313,20 @@ def test_the_pattern_command_prints_the_passes_line(tmp_path, capsys, profile_te
     out = capsys.readouterr().out
     assert "mm exposed run" in out and "full-width would be" in out
     assert ">= " in out, "the time estimate says 'at least'"
+
+
+def test_the_passes_line_counts_each_tile_at_its_own_speed(make_machine):
+    """C2: the time estimate follows the ROW speeds, not the profile's single one.
+
+    Two tiles 20 × 10 mm, row step 20 µm, overscan 5 mm: every row's pass is 30 mm, so a
+    tile is 500 × 30 = 15000 mm. At 50 mm/s the upper tile takes 300 s, at 25 mm/s the
+    lower one 600 s — 900 s, i.e. 15 min, against 600 s if one speed were used for both.
+    The speed range is written ASCII (`25-50`): the header is an ASCII file.
+    """
+    machine = make_machine()
+    pattern = dose(machine, speeds=(50.0, 25.0), power=0.5)
+    job = build_job(pattern.layer, pattern.machine, power_bands=pattern.bands,
+                    spot_compensation=False)
+    text = "\n".join(render_gcode(job))
+    assert ">= 15 min 00 s at 25-50 mm/s" in text
+    assert job.duration_s == pytest.approx(900.0)

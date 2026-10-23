@@ -66,6 +66,28 @@ def pass_lengths(rows: tuple[ScanRow, ...], overscan_mm: float,
     return exposed, len(rows) * frame
 
 
+def exposed_time_s(rows: tuple[ScanRow, ...], overscan_mm: float,
+                   row_speeds: tuple[float, ...]) -> float:
+    """Seconds of LIT travel: the run at each speed, divided by that speed.
+
+    A dose strip exposes tile by tile at different speeds, so one speed for the whole file
+    would report a time no speed can explain (plan С2 of `plan_2026_10_23_dose_by_speed`).
+    The lengths are summed FIRST and divided once per speed: dividing every row's pass
+    separately and adding a hundred quotients turns 1200 mm / 50 mm/s = 24.0 s into
+    23.999999999999996, and the whole-second floor then reports 23 s. Rows of one speed
+    are the same physical run, so they belong in one sum.
+
+    The result is a LOWER bound on purpose — the rapids, the accelerations and M4/M5 are
+    not in it, and the profile has no G0 speed to count them with.
+    """
+    lengths: dict[float, float] = {}
+    for row, speed in zip(rows, row_speeds):
+        span = row_pass(row, overscan_mm)
+        if span is not None:
+            lengths[speed] = lengths.get(speed, 0.0) + (span[1] - span[0])
+    return sum(length / speed for speed, length in lengths.items())
+
+
 def duration_parts(seconds: float) -> tuple[int, int]:
     """(minutes, seconds) of a duration, whole seconds rounded DOWN — the line says ``>=``.
 

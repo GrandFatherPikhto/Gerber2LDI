@@ -24,6 +24,7 @@ import pytest
 from gerber2ldi.backends.gcode import (LASER_MODE_COMMENT, WORK_ZERO_COMMENT,
                                        gc_number, render_gcode, write_gcode)
 from gerber2ldi.job import build_job
+from gerber2ldi.patterns import dose
 from gerber2ldi.source import load_layer
 
 HEADER = "%FSLAX46Y46*%\n%MOMM*%\n%TF.FileFunction,Copper,L1,Top*%\n"
@@ -191,3 +192,54 @@ def test_s_value_never_exceeds_the_ceiling(tmp_path, make_machine):
         "negative"])
 def test_numbers_have_micrometre_precision_without_trailing_zeros(value, expected):
     assert gc_number(value) == expected
+
+
+# ── С2 of `plan_2026_10_23_dose_by_speed`: the feed of a row ─────────────────────────
+
+
+def _pass_feeds(lines: list[str]) -> list[float]:
+    """The feed in force at the FIRST `G1` of every pass, in file order.
+
+    `F` is modal in GRBL, so a row whose speed did not change carries no word of its own:
+    the reader has to start from the header's value and follow the changes — exactly what
+    the machine does.
+    """
+    feed = 0.0
+    feeds: list[float] = []
+    in_pass = False
+    for line in lines:
+        words = line.split()
+        if not words:
+            continue
+        # The feed may be a word of its own (the header) or ride on a motion line
+        # (`G1 X5 S0 F1500`), which is where the writer puts a change.
+        for word in words:
+            if word[:1] == "F" and len(word) > 1:
+                feed = float(word[1:])
+        if words[0] == "G0":
+            in_pass = True
+        elif words[0] == "G1" and in_pass:
+            feeds.append(feed)
+            in_pass = False
+    return feeds
+
+
+def test_each_tile_sets_its_own_feed_once(make_machine):
+    """C2: tiles at 50 then 25 mm/s. The header already carries 3000 for the first tile,
+    so only the change gets a word — on the run-up, the first `G1` of the row."""
+    machine = make_machine()
+    pattern = dose(machine, speeds=(50.0, 25.0), power=0.5)
+    job = build_job(pattern.layer, pattern.machine, power_bands=pattern.bands,
+                    spot_compensation=False)
+    lines = render_gcode(job)
+    assert _pass_feeds(lines) == [3000.0] * 500 + [1500.0] * 500
+    assert [line for line in lines if line.startswith("F")] == ["F3000"], "header only"
+    assert sum(1 for line in lines if " F" in line) == 1, "one change, one word"
+    assert [line for line in lines if " F" in line][0].startswith("G1"), "on a motion"
+
+
+def test_a_uniform_job_keeps_a_single_feed_word(tmp_path, make_machine):
+    """The control: no change of speed, no `F` in the body — the file is what it was."""
+    lines = render_gcode(_job(tmp_path, make_machine))
+    assert [line for line in lines if line.startswith("F")] == ["F3000"]
+    assert not any(" F" in line for line in lines)

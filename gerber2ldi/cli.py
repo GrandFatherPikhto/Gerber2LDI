@@ -24,7 +24,7 @@ from .patterns import (DEFAULT_GRID_GAP_MM, DEFAULT_GRID_HEIGHT_MM, DEFAULT_GRID
                        DEFAULT_GRID_WIDTH_MM, DEFAULT_LENGTH_MM, DEFAULT_LINE_WIDTH_MM,
                        DEFAULT_SIDE_MM, DEFAULT_TILE_HEIGHT_MM, DEFAULT_TILE_WIDTH_MM,
                        DEFAULT_WIDTHS_MM, GRID_DIRECTIONS, Pattern, bars, dose,
-                       fit_lines, grid, powers_from_series, square)
+                       fit_lines, grid, powers_from_series, speeds_from_series, square)
 from .preview import write_preview
 from .raster import iter_rows, write_tiff
 from .source import load_layer
@@ -119,6 +119,41 @@ def _powers(text: str) -> tuple[float, ...]:
     return tuple(values)
 
 
+def _positive_speed(text: str) -> float:
+    """argparse type: a finite, positive speed in mm/s.
+
+    A separate type from `_positive_mm` on purpose: the refusal quotes the unit, and
+    "expected a positive size in mm" for a speed would send the operator to the wrong
+    line of the profile.
+    """
+    try:
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            _("expected a number, got {value}").format(value=text)) from None
+    if not math.isfinite(value) or value <= 0.0:
+        raise argparse.ArgumentTypeError(
+            _("expected a positive speed in mm/s, got {value}").format(value=text))
+    return value
+
+
+def _speeds(text: str) -> tuple[float, ...]:
+    """argparse type: comma-separated speeds in mm/s, in the order given (bottom to top)."""
+    values = []
+    for item in text.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        try:
+            values.append(_positive_speed(item))
+        except argparse.ArgumentTypeError as bad:
+            raise argparse.ArgumentTypeError(
+                _("speeds: {error}").format(error=bad)) from None
+    if not values:
+        raise argparse.ArgumentTypeError(_("at least one speed is required"))
+    return tuple(values)
+
+
 def _count(text: str) -> int:
     """argparse type: how many dose levels, at least two (a series needs a step)."""
     try:
@@ -160,18 +195,18 @@ def _duration(seconds: float) -> str:
 def _print_passes(job) -> None:
     """The numbers the .nc header carries, in the operator's language.
 
-    Only the WORDS are translated: the numbers come from ``Job.pass_lengths``, and the
-    header keeps its own ASCII English copy because the file is written with
-    ``encoding="ascii"`` (see `job.job`). The time is a LOWER bound — rapids, accelerations
-    and M4/M5 are not in it.
+    Only the WORDS are translated: the numbers come from ``Job.pass_lengths`` and
+    ``Job.duration_s`` (each row at its own speed), and the header keeps its own ASCII
+    English copy because the file is written with ``encoding="ascii"`` (see `job.job`).
+    The time is a LOWER bound — rapids, accelerations and M4/M5 are not in it.
     """
     exposed, full_width = job.pass_lengths()
     share = (exposed / full_width - 1.0) * 100.0 if full_width else 0.0
     print(_("passes: {exposed} mm exposed run (full-width would be {full} mm, {share}%), >= {time} at {speed} mm/s")
           .format(exposed=f"{exposed:.1f}", full=f"{full_width:.1f}",
                   share=f"{share:+.0f}",
-                  time=_duration(exposed / job.speed_mm_s),
-                  speed=f"{job.speed_mm_s:g}"))
+                  time=_duration(job.duration_s),
+                  speed=job.speed_text))
 
 
 def _cmd_info(args: argparse.Namespace) -> int:
@@ -243,23 +278,39 @@ def _cmd_preview(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def _dose_levels(args: argparse.Namespace) -> tuple[float, ...]:
-    """The dose levels: ``--powers`` OR a geometric ``--from/--to/--count`` series.
+def _dose_levels(args: argparse.Namespace) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """The dose levels as ``(powers, speeds)``: one of them, never both.
 
-    Exactly one form; neither is a refusal, because a strip without levels would
-    silently expose the whole board at one power.
+    Powers set the dose with the power word at the profile's own speed; speeds set it by
+    how fast the head moves, which is the only handle an on/off laser has. Exactly one
+    form is required — a strip without levels would silently expose the whole tile at one
+    level — and mixing them is a refusal, so that the strip's own numbers stay readable.
     """
-    series = (args.start, args.stop, args.count)
-    if args.powers is not None and any(value is not None for value in series):
+    powers_given = args.powers is not None
+    power_edges = args.start is not None or args.stop is not None
+    speeds_given = args.speeds is not None
+    speed_edges = args.speed_start is not None or args.speed_stop is not None
+    if (powers_given or power_edges) and (speeds_given or speed_edges):
+        raise JobError(_("Use either powers (--powers, --from/--to) or speeds (--speeds, --speed-from/--speed-to), not both"))
+    if powers_given and power_edges:
         raise JobError(_("Use either --powers or --from/--to/--count, not both"))
-    if args.powers is not None:
-        return args.powers
-    if all(value is None for value in series):
-        raise JobError(
-            _("A dose strip needs its levels: --powers 0.02,0.03,... or --from, --to and --count"))
-    if any(value is None for value in series):
-        raise JobError(_("--from, --to and --count go together: one of them is missing"))
-    return powers_from_series(args.start, args.stop, args.count)
+    if speeds_given and speed_edges:
+        raise JobError(_("Use either --speeds or --speed-from/--speed-to/--count, not both"))
+    if powers_given:
+        return args.powers, ()
+    if speeds_given:
+        return (), args.speeds
+    if power_edges:
+        if args.start is None or args.stop is None or args.count is None:
+            raise JobError(_("--from, --to and --count go together: one of them is missing"))
+        return powers_from_series(args.start, args.stop, args.count), ()
+    if speed_edges:
+        if args.speed_start is None or args.speed_stop is None or args.count is None:
+            raise JobError(
+                _("--speed-from, --speed-to and --count go together: one of them is missing"))
+        return (), speeds_from_series(args.speed_start, args.speed_stop, args.count)
+    raise JobError(
+        _("A dose strip needs its levels: --powers 0.02,0.03,... or --from/--to/--count, or --speeds 80,50,... with --power"))
 
 
 def _pattern_report(args: argparse.Namespace, pattern: Pattern, job) -> list[str]:
@@ -277,13 +328,21 @@ def _pattern_report(args: argparse.Namespace, pattern: Pattern, job) -> list[str
             _("Layout: horizontal groups at the bottom left (along X: Y resolution), vertical groups to their right (along Y: X resolution)"),
         ]
     if args.kind == "dose":
-        lines = [_("Dose strip: {count} tiles bottom to top, each with its own power")
+        lines = [_("Dose strip: {count} tiles bottom to top, each with its own dose level")
                  .format(count=len(job.doses))]
         for index, level in enumerate(job.doses, start=1):
-            lines.append(_("  {index}: y {y0} … {y1} mm, power {power}, S {s}")
+            lines.append(_("  {index}: y {y0} … {y1} mm, power {power}, S {s}, speed {speed} mm/s, relative dose {dose}")
                          .format(index=index, y0=round(level.y0_mm, 3),
                                  y1=round(level.y1_mm, 3),
-                                 power=round(level.power, 4), s=level.s_value))
+                                 power=round(level.power, 4), s=level.s_value,
+                                 speed=f"{level.speed_mm_s:g}",
+                                 dose=f"{level.relative_dose:.3f}"))
+        if any(level.energy_mj_cm2 is None for level in job.doses):
+            lines.append(_("absolute dose unknown: power_w not measured"))
+        else:
+            for index, level in enumerate(job.doses, start=1):
+                lines.append(_("  {index}: E {energy} mJ/cm2 (power_w over speed and row step)")
+                             .format(index=index, energy=f"{level.energy_mj_cm2:.1f}"))
         return lines
     if args.kind == "grid":
         return [
@@ -321,7 +380,9 @@ def _cmd_pattern(args: argparse.Namespace) -> int:
         if args.kind == "bars":
             built = bars(machine, widths=args.widths, length_mm=args.length_mm)
         elif args.kind == "dose":
-            built = dose(machine, _dose_levels(args), tile_width_mm=args.tile_width_mm,
+            powers, speeds = _dose_levels(args)
+            built = dose(machine, powers, speeds=speeds, power=args.power,
+                         tile_width_mm=args.tile_width_mm,
                          tile_height_mm=args.tile_height_mm)
         elif args.kind == "grid":
             built = grid(machine, width_mm=args.width_mm, height_mm=args.height_mm,
@@ -331,7 +392,11 @@ def _cmd_pattern(args: argparse.Namespace) -> int:
             built = square(machine, side_mm=args.side_mm,
                            line_width_mm=args.line_width_mm,
                            with_calibration=args.with_calibration)
-        job = build_job(built.layer, built.machine, power=getattr(args, "power", None),
+        # A band already carries its power OR its speed (a speed strip carries one power
+        # for all its tiles), so `power=` goes in only when there are no bands at all —
+        # `build_job` refuses the two forms together on purpose.
+        job = build_job(built.layer, built.machine,
+                        power=None if built.bands else getattr(args, "power", None),
                         power_bands=built.bands, notes=built.notes,
                         board=False,  # a pattern is not a board: no second side, no --frame
                         spot_compensation=args.with_compensation,
@@ -434,6 +499,16 @@ def build_parser() -> argparse.ArgumentParser:
                              help=_("highest power fraction of the series"))
     dose_parser.add_argument("--count", type=_count, default=None,
                              help=_("how many levels the series has"))
+    dose_parser.add_argument("--power", type=_fraction, default=None,
+                             help=_("one power fraction for all tiles of a speed strip"))
+    dose_parser.add_argument("--speeds", type=_speeds, default=None,
+                             help=_("speeds in mm/s, comma separated, bottom to top (falling)"))
+    dose_parser.add_argument("--speed-from", dest="speed_start", type=_positive_speed,
+                             default=None,
+                             help=_("fastest speed of a geometric series, mm/s"))
+    dose_parser.add_argument("--speed-to", dest="speed_stop", type=_positive_speed,
+                             default=None,
+                             help=_("slowest speed of the series, mm/s"))
     dose_parser.add_argument("--tile-width-mm", type=_positive_mm,
                              default=DEFAULT_TILE_WIDTH_MM, help=_("tile width, mm"))
     dose_parser.add_argument("--tile-height-mm", type=_positive_mm,

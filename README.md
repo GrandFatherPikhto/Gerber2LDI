@@ -259,6 +259,32 @@ All four patterns run without spot compensation unless `--with-compensation` is 
 because the bars are what the spot is measured FROM, and a grid drawn through an
 unmeasured radius would hide exactly what it exists to show.
 
+**A dose strip by SPEED.** When the dose is set by how fast the head moves instead of by
+the power word — a laser that only switches on and off — the strip varies the speed and
+keeps ONE power:
+
+    gerber2ldi pattern dose --profile P --speeds 80,57,40,28,20,14,10,7,5 --power P -o dose.nc
+    gerber2ldi pattern dose --profile P --speed-from 80 --speed-to 5 --count 9 --power P -o dose.nc
+
+The tiles run bottom to top with the speed FALLING, so the dose RISES; equal neighbours are
+refused, because two tiles that cannot be told apart are a wasted exposure. Powers and
+speeds in one command are refused too: one knob per strip. For every tile the command
+prints `S`, the speed and the RELATIVE dose (`power × profile speed / row speed`, so 1.0
+anywhere on the profile's own speed), and — when `laser.power_w` has been measured — the
+absolute surface dose `E = 1e5 · P[W] · power / (v[mm/s] · Δy[mm])` in mJ/cm². With
+`power_w = 0` it says `absolute dose unknown`: a number nobody measured would be worse than
+none.
+
+Every speed is checked against the machine before a byte of the program exists:
+`machine.max_rate_x_mm_s` (`$110`/60) and `machine.accel_x_mm_s2` (`$120`). A speed above
+the limit is refused, because GRBL would cut `F` silently and the dose would come out higher
+than asked; a strip shorter than `v²/(2a)` is refused too, because the first copper would be
+lit while the head is still accelerating.
+
+Write next to each tile: the driver current, the photodiode reading (if there is one), and
+the development (concentration, temperature, time) plus how the layer was dried. A dose is
+comparable to another dose only when those stand on the same line.
+
 ### 10. If something is wrong
 
 | symptom | likely cause | what to do |

@@ -55,6 +55,9 @@ Job
   side: top | bottom             — bottom = зеркало
   process: etch-resist | plating-resist   — → полярность
   power_fraction                 — ≤ usable_fraction, иначе отказ
+  s_values / v_values            — мощность и СКОРОСТЬ на строку (пусто — одна на всё задание);
+                                   row_s_values / row_speeds дают одну форму для обоих случаев,
+                                   row_feeds_mm_per_min — те же скорости в мм/мин для `F`
   rows: [ScanRow]                — после компенсации, перекоса, зеркала, полярности
   passes                         — строки в порядке проезда; начало/конец прохода — `row_pass(row)`: от первой меди минус разгон
                                    до последней плюс разгон, всегда +X; пустая строка прохода не имеет; рамка задания
@@ -62,6 +65,8 @@ Job
   pass_lengths()                 — (рабочий ход, «во всю ширину») в мм, обе из row_pass; из них строка `passes:` в шапке
                                    и в stdout (время — duration_parts: разбиение одно, округление ВНИЗ;
                                    format_duration — ASCII для шапки, cli._duration — переводимые «мин»/«с»)
+  duration_s / speed_text        — время по СКОРОСТЯМ СТРОК (exposed_time_s: длина делится на скорость один
+                                   раз на скорость) и «50» либо «25-50» для шапки — ASCII, без многоточий
 ```
 
 Правило и счёт живут в `gerber2ldi/job/passes.py`: модульные `row_pass`, `pass_lengths`,

@@ -28,7 +28,8 @@ import pytest
 from gerber2ldi.backends.gcode import read_segments, render_gcode, write_gcode
 from gerber2ldi.errors import JobError
 from gerber2ldi.job import Dose, Job, PowerBand, build_job
-from gerber2ldi.patterns import bars, dose, fit_lines, grid, powers_from_series
+from gerber2ldi.patterns import (bars, dose, fit_lines, grid, powers_from_series,
+                                 speeds_from_series)
 from gerber2ldi.patterns.shapes import layer_of, rectangle
 from gerber2ldi.scan import ScanRow
 
@@ -336,3 +337,69 @@ def test_dose_bands_are_used_by_the_job_as_dose_objects(make_machine):
     assert all(isinstance(level, Dose) for level in job.doses)
     assert job.s_value == 50, "the uniform field carries the highest band S"
     assert isinstance(job.rows[0], ScanRow)
+
+
+# ── С2 of `plan_2026_10_23_dose_by_speed`: the strip by SPEED ────────────────────────
+
+
+def test_dose_by_speed_keeps_one_power_and_varies_the_feed(make_machine):
+    """C2: tiles at 50 and 25 mm/s, one power. The dose rises upwards, the S does not move.
+
+    Tile boundaries land on row centres: 10 mm / 0.02 = every 500th row.
+    """
+    machine = make_machine(calibration_text=NO_SPOT)
+    pattern = dose(machine, speeds=(50.0, 25.0), power=0.5)
+    assert [band.speed_mm_s for band in pattern.bands] == [50.0, 25.0]
+    assert [band.power for band in pattern.bands] == [0.5, 0.5]
+    job = build_job(pattern.layer, pattern.machine, power_bands=pattern.bands,
+                    notes=pattern.notes, spot_compensation=False)
+    assert [level.relative_dose for level in job.doses] == [pytest.approx(0.5),
+                                                            pytest.approx(1.0)]
+    assert job.row_speeds[499] == 50.0
+    assert job.row_speeds[500] == 25.0
+    assert set(job.row_s_values) == {500}, "one power word for the whole strip"
+    text = "\n".join(render_gcode(job))
+    assert ("; dose 1/2: y 0.000-10.000 mm (figure), power 0.5000, S 500, "
+            "speed 50 mm/s, relative dose 0.500") in text
+    assert ("; dose 2/2: y 10.000-20.000 mm (figure), power 0.5000, S 500, "
+            "speed 25 mm/s, relative dose 1.000") in text
+    assert "; doses: relative dose = power x 50 mm/s / row speed" in text
+
+
+SPEED_ORDER_CELLS = [((50.0, 50.0), "equal neighbours"),
+                     ((25.0, 50.0), "rising speeds")]
+
+
+@pytest.mark.parametrize("speeds, why", SPEED_ORDER_CELLS,
+                         ids=[cell[1] for cell in SPEED_ORDER_CELLS])
+def test_dose_refuses_speeds_that_do_not_fall(make_machine, speeds, why):
+    """Dose ∝ 1/v, so a strip rises only if the speed falls; two equal tiles are a waste."""
+    machine = make_machine(calibration_text=NO_SPOT)
+    with pytest.raises(ValueError, match="must fall"):
+        dose(machine, speeds=speeds, power=0.5)
+
+
+def test_dose_refuses_powers_and_speeds_together(make_machine):
+    """One knob per strip: two ladders in one file could not be read back by the operator."""
+    machine = make_machine(calibration_text=NO_SPOT)
+    with pytest.raises(ValueError, match="not both"):
+        dose(machine, (0.2, 0.4), speeds=(50.0, 25.0), power=0.5)
+
+
+def test_dose_speed_strip_needs_one_power(make_machine):
+    """`S` still has to be decided: a speed strip carries ONE power for all its tiles."""
+    machine = make_machine(calibration_text=NO_SPOT)
+    with pytest.raises(ValueError, match="needs one power"):
+        dose(machine, speeds=(50.0, 25.0))
+
+
+def test_speeds_from_series_falls_geometrically_and_refuses_to_rise():
+    """The same ladder as the powers, climbed downwards: 80 … 5 mm/s in equal ratios."""
+    levels = speeds_from_series(80.0, 5.0, 9)
+    assert levels[0] == pytest.approx(80.0)
+    assert levels[-1] == pytest.approx(5.0)
+    ratio = (5.0 / 80.0) ** (1.0 / 8.0)
+    assert levels[1] == pytest.approx(80.0 * ratio)
+    assert all(lower > upper for lower, upper in zip(levels, levels[1:]))
+    with pytest.raises(ValueError, match="falls"):
+        speeds_from_series(5.0, 80.0, 9)

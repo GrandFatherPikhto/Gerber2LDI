@@ -30,7 +30,11 @@ not stop on every S change. The header therefore carries
 each S change.
 
 `F` is millimetres per MINUTE in GRBL; the conversion from mm/s lives in
-``Job.feed_mm_per_min`` and nowhere else.
+``job.job.feed_mm_per_min`` and nowhere else. The header carries the profile's own feed,
+and a row whose speed differs gets its ``F`` on the FIRST ``G1`` of that row — the run-up,
+where the head accelerates. Only on a change: GRBL keeps ``F`` modal, so repeating it every
+row would grow the file and change nothing. That is how a dose strip by SPEED works when
+the laser is on/off and the power word cannot carry the dose.
 
 `S` is written PER ROW from ``Job.row_s_values``: a dose strip exposes each band of
 rows with its own power, so one number for the whole program would under- or
@@ -82,7 +86,9 @@ def render_gcode(job) -> list[str]:
     lines = [LASER_MODE_COMMENT, WORK_ZERO_COMMENT]
     lines.extend(_comment(note) for note in job.notes)
     lines.extend(["G21", "G90", f"F{gc_number(job.feed_mm_per_min)}"])
-    for row, s_value in zip(job.rows, job.row_s_values):
+    feed = job.feed_mm_per_min
+    for row, s_value, row_feed in zip(job.rows, job.row_s_values,
+                                      job.row_feeds_mm_per_min):
         span = job.row_pass(row)
         if span is None:
             continue                    # nothing to expose on this row: no travel at all
@@ -90,14 +96,23 @@ def render_gcode(job) -> list[str]:
         lines.append("M5")
         lines.append(f"G0 X{gc_number(pass_start)} Y{gc_number(row.y_mm)}")
         lines.append("M4 S0")
+        # The row's moves first, so that the feed word can land on the FIRST of them
+        # whatever it is — the run-up normally, the drawing segment when overscan is 0.
+        moves: list[tuple[float, int]] = []
         position = pass_start
         for start, end in row.segments:
             if start > position:
-                lines.append(f"G1 X{gc_number(start)} S0")
-            lines.append(f"G1 X{gc_number(end)} S{s_value}")
+                moves.append((start, 0))
+            moves.append((end, s_value))
             position = end
         if pass_end > position:
-            lines.append(f"G1 X{gc_number(pass_end)} S0")
+            moves.append((pass_end, 0))
+        for index, (target, power_word) in enumerate(moves):
+            suffix = ""
+            if index == 0 and row_feed != feed:
+                suffix = f" F{gc_number(row_feed)}"
+                feed = row_feed
+            lines.append(f"G1 X{gc_number(target)} S{power_word}{suffix}")
     lines.append("M5")
     return lines
 

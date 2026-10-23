@@ -307,3 +307,67 @@ def test_pattern_grid_says_whether_the_spot_compensation_was_used(tmp_path, caps
     assert main([*options[:-2], "--with-compensation", *options[-2:]]) == 0
     assert "Spot compensation: on" in capsys.readouterr().out
     assert "; spot compensation: r=0.150 mm" in target.read_text()
+
+
+# ── С2 of `plan_2026_10_23_dose_by_speed`: the strip by speed ───────────────────────
+
+
+def test_pattern_dose_by_speed_reports_speed_and_relative_dose(tmp_path, capsys,
+                                                               profile_text):
+    """C2: every tile line carries its speed and how much light it gets, in stdout and
+    in the header. The fixture's power_w is measured, so the absolute dose is a number."""
+    profile = _machine_files(tmp_path, profile_text, NO_SPOT)
+    target = tmp_path / "dose.nc"
+    assert main(["pattern", "dose", "--profile", str(profile), "--speeds", "50,25",
+                 "--power", "0.5", "-o", str(target)]) == 0
+    out = capsys.readouterr().out
+    assert "speed 50 mm/s, relative dose 0.500" in out
+    assert "speed 25 mm/s, relative dose 1.000" in out
+    assert "mJ/cm2" in out, "power_w is measured in the fixture, so E is known"
+    text = target.read_text()
+    assert "speed 25 mm/s, relative dose 1.000" in text
+    assert "absolute dose unknown" not in text
+
+
+def test_pattern_dose_by_speed_takes_a_geometric_series(tmp_path, capsys, profile_text):
+    profile = _machine_files(tmp_path, profile_text, NO_SPOT)
+    target = tmp_path / "dose.nc"
+    assert main(["pattern", "dose", "--profile", str(profile), "--speed-from", "50",
+                 "--speed-to", "25", "--count", "2", "--power", "0.5",
+                 "-o", str(target)]) == 0
+    out = capsys.readouterr().out
+    assert "speed 50 mm/s" in out and "speed 25 mm/s" in out
+
+
+def test_pattern_dose_by_speed_refuses_a_tile_it_cannot_run(tmp_path, capsys,
+                                                            profile_text):
+    """80 mm/s needs 6.4 mm of run-up on this accel; the strip is 5 mm — no file is left."""
+    profile = _machine_files(tmp_path, profile_text, NO_SPOT)
+    target = tmp_path / "dose.nc"
+    assert main(["pattern", "dose", "--profile", str(profile), "--speeds", "80,20",
+                 "--power", "0.5", "-o", str(target)]) == 2
+    captured = capsys.readouterr()
+    assert "needs 6.4 mm" in captured.err
+    assert not target.exists()
+
+
+FLAG_CLASH_CELLS = [
+    (["--speeds", "50,25", "--powers", "0.2,0.4"], "not both", "powers and speeds"),
+    (["--speeds", "50,25"], "one power", "a speed strip without a power"),
+    (["--speeds", "50,50", "--power", "0.5"], "must fall", "equal neighbours"),
+    (["--speed-from", "50", "--speed-to", "25", "--power", "0.5"], "go together",
+     "half a speed series"),
+]
+
+
+@pytest.mark.parametrize("options, expected, why", FLAG_CLASH_CELLS,
+                         ids=[cell[2] for cell in FLAG_CLASH_CELLS])
+def test_pattern_dose_refuses_clashing_level_flags(tmp_path, capsys, profile_text,
+                                                   options, expected, why):
+    """One refusal line, exit 2, and nothing written — the same contract as everywhere."""
+    profile = _machine_files(tmp_path, profile_text, NO_SPOT)
+    target = tmp_path / "dose.nc"
+    assert main(["pattern", "dose", "--profile", str(profile), *options,
+                 "-o", str(target)]) == 2
+    assert expected in capsys.readouterr().err
+    assert not target.exists()
