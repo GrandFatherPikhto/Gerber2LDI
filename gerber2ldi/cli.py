@@ -18,7 +18,7 @@ from pathlib import Path
 from .backends.gcode import read_segments, write_gcode
 from .errors import Gerber2LDIError, JobError
 from .i18n import _, setup_i18n
-from .job import (PROCESSES, SIDES, SIDE_TOP, PROCESS_ETCH, build_job, format_duration,
+from .job import (PROCESSES, SIDES, SIDE_TOP, PROCESS_ETCH, build_job, duration_parts,
                   ink_box, load_profile)
 from .patterns import (DEFAULT_GRID_GAP_MM, DEFAULT_GRID_HEIGHT_MM, DEFAULT_GRID_LINE_MM,
                        DEFAULT_GRID_WIDTH_MM, DEFAULT_LENGTH_MM, DEFAULT_LINE_WIDTH_MM,
@@ -144,6 +144,19 @@ def _print_warnings(lines) -> None:
         print(line, file=sys.stderr)
 
 
+def _duration(seconds: float) -> str:
+    """A duration with TRANSLATABLE units («7 мин 12 с»), splitted by `duration_parts`.
+
+    The split and the rounding are the job's (`duration_parts`, floor — the line promises
+    ``>=``); only the words of the units are ours. The `.nc` header keeps the ASCII
+    `format_duration`, because the file is written with ``encoding="ascii"``.
+    """
+    minutes, rest = duration_parts(seconds)
+    if minutes:
+        return _("{minutes} min {seconds} s").format(minutes=minutes, seconds=f"{rest:02d}")
+    return _("{seconds} s").format(seconds=rest)
+
+
 def _print_passes(job) -> None:
     """The numbers the .nc header carries, in the operator's language.
 
@@ -157,7 +170,7 @@ def _print_passes(job) -> None:
     print(_("passes: {exposed} mm exposed run (full-width would be {full} mm, {share}%), >= {time} at {speed} mm/s")
           .format(exposed=f"{exposed:.1f}", full=f"{full_width:.1f}",
                   share=f"{share:+.0f}",
-                  time=format_duration(exposed / job.speed_mm_s),
+                  time=_duration(exposed / job.speed_mm_s),
                   speed=f"{job.speed_mm_s:g}"))
 
 

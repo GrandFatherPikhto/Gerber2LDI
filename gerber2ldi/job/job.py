@@ -118,14 +118,20 @@ def _pass_lengths(rows: tuple[ScanRow, ...], overscan_mm: float,
     return exposed, len(rows) * frame
 
 
-def format_duration(seconds: float) -> str:
-    """A duration as ``4 min 06 s``, rounded DOWN — the line promises ``>=``.
+def duration_parts(seconds: float) -> tuple[int, int]:
+    """(minutes, seconds) of a duration, whole seconds rounded DOWN — the line says ``>=``.
 
     A fraction of a second would be a claim about a speed the machine was never measured
-    at; whole seconds below the estimate keep the promise true.
+    at; whole seconds below the estimate keep the promise true. The SPLIT lives here so
+    that the ASCII header and the translated stdout line cannot disagree about it — only
+    the words of the units differ (`format_duration` below, `cli._duration`).
     """
-    total = int(seconds)
-    minutes, rest = divmod(total, 60)
+    return divmod(int(seconds), 60)
+
+
+def format_duration(seconds: float) -> str:
+    """ASCII ``4 min 06 s`` (or ``48 s``) for the ``.nc`` header, which is never translated."""
+    minutes, rest = duration_parts(seconds)
     return f"{minutes} min {rest:02d} s" if minutes else f"{rest} s"
 
 

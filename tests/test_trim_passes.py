@@ -13,6 +13,8 @@ layer with the same `--place` still lands in the same machine coordinates.
 Cells:
 
     один отрезок            G0 X(a − overscan), затем G1 X(b + overscan) S0 последним
+    ДВА отрезка             конец — после ПОСЛЕДНЕГО, выбег после него ровно overscan;
+                            длина хода в passes: посчитана руками
     две строки              у каждой своё начало: строка не едет через всю плату
     разгон                  перед первым S>0 и после последнего — ровно overscan по +X
     пустая строка           прохода нет вовсе: ни G0, ни M4
@@ -116,6 +118,26 @@ def test_each_row_starts_where_its_own_copper_starts(tmp_path, make_machine):
     job = _job(tmp_path, make_machine, [(1.0, 1.0), (20.0, 5.0)])
     starts = sorted({one["start"] for one in _passes(render_gcode(job))})
     assert starts == [pytest.approx(0.0), pytest.approx(19.0)]
+
+
+def test_a_row_with_two_segments_runs_past_the_LAST_one(tmp_path, make_machine):
+    """Two pads on one row: the pass ends after the SECOND segment, not after the first.
+
+    Pads flashed at (1, 1) and (10, 1) cover x 0 … 2 and 9 … 11, so after the placement
+    the row is (5, 7) and (14, 16): rapid to 0, run-up to 5, draw to 7, travel over the gap
+    to 14 with S0, draw to 16, run out to 21. A pass that ended at the FIRST segment
+    (7 + 5 = 12) would stop the machine on copper — this cell exists for that mutation.
+    """
+    job = _job(tmp_path, make_machine, [(1.0, 1.0), (10.0, 1.0)])
+    passes = _passes(render_gcode(job))
+    assert passes, "no pass at all"
+    for one in passes:
+        assert one["start"] == pytest.approx(0.0), "the rapid goes before the FIRST segment"
+        assert one["moves"] == [(5.0, 0.0), (7.0, 500.0), (14.0, 0.0), (16.0, 500.0),
+                                (21.0, 0.0)], "run-up, copper, the gap, copper, run-out"
+    # 100 rows of 0.02 mm, each pass 21 mm from the first pad minus the strip to the
+    # second pad plus the strip; at full width the frame is also 21 mm, so the share is 0.
+    assert job.pass_lengths() == pytest.approx((2100.0, 2100.0))
 
 
 def test_every_row_has_a_run_up_of_exactly_the_overscan(tmp_path, make_machine):
@@ -253,6 +275,32 @@ def test_the_job_command_prints_the_passes_line(tmp_path, capsys, profile_text):
     assert ("passes: 1200.0 mm exposed run (full-width would be 1200.0 mm, +0%), "
             ">= 24 s at 50 mm/s") in out
     assert "passes: 1200.0 mm exposed run" in target.read_text(), "the header has it too"
+
+
+RU_DURATION_CELLS = [
+    ("50", "не меньше 42 с", ">= 42 s at 50 mm/s"),
+    ("25", "не меньше 1 мин 24 с", ">= 1 min 24 s at 25 mm/s"),
+]
+
+
+@pytest.mark.parametrize("speed, russian, header", RU_DURATION_CELLS,
+                         ids=["under a minute", "over a minute"])
+def test_the_duration_units_are_translated_in_stdout(tmp_path, capsys, profile_text,
+                                                     monkeypatch, speed, russian, header):
+    """The numbers are the job's; «мин» and «с» are ours, and the header stays ASCII.
+
+    Two pads on one row: 2100.0 mm of pass at 50 mm/s is 42 s, at 25 mm/s 84 s.
+    """
+    monkeypatch.setenv("LANGUAGE", "ru")
+    profile = _profile(tmp_path, profile_text.replace("speed_mm_s = 50",
+                                                      f"speed_mm_s = {speed}"))
+    _layer(tmp_path, [(1.0, 1.0), (10.0, 1.0)], name="board.gbr")
+    target = tmp_path / "job.nc"
+    assert main(["job", str(tmp_path / "board.gbr"), "--profile", profile, "--power", "0.5",
+                 "--no-spot-compensation", "-o", str(target)]) == 0
+    out = capsys.readouterr().out
+    assert russian in out
+    assert "мин" not in target.read_text(), "the .nc header is ASCII: no translated units"
 
 
 def test_the_pattern_command_prints_the_passes_line(tmp_path, capsys, profile_text):

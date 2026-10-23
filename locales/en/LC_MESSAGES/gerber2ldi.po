@@ -418,3 +418,9 @@ msgstr ""
 
 msgid "passes: {exposed} mm exposed run (full-width would be {full} mm, {share}%), >= {time} at {speed} mm/s"
 msgstr ""
+
+msgid "{minutes} min {seconds} s"
+msgstr ""
+
+msgid "{seconds} s"
+msgstr ""
