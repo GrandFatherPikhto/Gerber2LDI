@@ -17,6 +17,10 @@ Cells:
     зеркало и полярность    --mirror = np.fliplr от прямой, --invert = 255 − прямая
     метка                   F несимметрична по X и по Y, стоит в углу рисунка по
                             умолчанию, узор только сдвигается вправо, с --mirror отражена
+    ширина в пикселях       --widths-px / --line-px / --gap-px: ровно n пикселей КАЖДОЙ
+                            оси (одно число — две физические ширины), отклонения нет
+    отклонение > 10 %       мм-заказ вне 10 % от фактической — предупреждение; внутри и
+                            у пиксельной формы — тишина
     отказы                  ширина меньше пикселя; рисунок за экран (мм и пиксели);
                             нет --screen-px / --pixel-um
     одинаковые группы       две ширины в одно n — предупреждение; разные n — тишина
@@ -318,3 +322,73 @@ def test_the_report_says_where_the_marker_is_and_how_to_read_it(tmp_path, capsys
     assert "marker: the letter F in the top-left corner of the figure" in out
     assert "the pattern starts" in out
     assert "stem is on the LEFT" in out
+
+
+def test_a_pixel_request_is_one_count_and_two_physical_widths(tmp_path, capsys):
+    """6 px of a 30 um pixel is 180 um down and of a 34.4 um one 206.4 um across.
+
+    That is the whole point of asking in pixels: the count is exactly what the LCD lights,
+    and one number still means two widths when the pixel is not square.
+    """
+    target = _run(tmp_path, "bars", *SCREEN, *RECT_PIXEL, "--widths-px", "6",
+                  "--lines", "2", "--at", "0,0", "--no-marker")
+    captured = capsys.readouterr()
+    assert "6 px -> 180.0 um along Y, 206.4 um along X" in captured.out
+    assert "is drawn as" not in captured.err, "a pixel request cannot deviate from itself"
+
+    array = _pixels(target)
+    column = _runs_of_figure(array[:, 0])
+    assert [length for value, length in column if value == 255] == [6] * 2
+    row = _runs_of_figure(array[0, :])
+    assert row[2:] == [(255, 6), (0, 6), (255, 6)], "the same 6 px wide along X"
+
+
+def test_grid_takes_its_line_and_gap_in_whole_pixels(tmp_path, capsys):
+    _run(tmp_path, "grid", *SCREEN, "--pixel-um", "100x100",
+         "--width-mm", "1", "--height-mm", "1", "--line-px", "3", "--gap-px", "1",
+         "--at", "0,0", "--no-marker")
+    captured = capsys.readouterr()
+    assert "line: 3 px -> 300.0 um along X, 300.0 um along Y" in captured.out
+    assert "gap: 1 px -> 100.0 um along X, 100.0 um along Y" in captured.out
+    assert "is drawn as" not in captured.err
+
+
+DEVIATION_CELLS = [
+    ("34x34", "0.100", None),        # 3 px = 102 um: +2 %, silence
+    ("100x100", "0.220", None),      # 2 px = 200 um: -9.1 %, silence
+    ("100x100", "0.180", "+11 %"),   # 2 px = 200 um: +11.1 %, warned
+    ("34x34", "0.050", "-32 %"),     # 1 px = 34 um: -32 %, warned
+]
+
+
+@pytest.mark.parametrize("pixel_um, width_mm, expected", DEVIATION_CELLS,
+                         ids=["+2 % silent", "-9.1 % silent", "+11.1 % warned",
+                              "-32 % warned"])
+def test_a_millimetre_request_announces_a_deviation_over_ten_percent(
+        tmp_path, capsys, pixel_um, width_mm, expected):
+    """Ten percent is where the operator has to know; below it development is coarser.
+
+    The exactly-ten-percent row is deliberately NOT here: on floats it is a coin flip
+    (the limit is strict, `> 10 %`), and a cell that passes by luck is worse than none.
+    """
+    _run(tmp_path, "bars", *SCREEN, "--pixel-um", pixel_um, "--widths-mm", width_mm,
+         "--lines", "2")
+    err = capsys.readouterr().err
+    assert ("is drawn as" in err) is (expected is not None)
+    if expected is not None:
+        assert expected in err
+        assert f"{width_mm} mm along Y is drawn as" in err
+        assert f"{width_mm} mm along X is drawn as" in err
+
+
+def test_both_forms_at_once_are_refused(tmp_path, capsys):
+    """Millimetres or pixels, never both: two answers to one question cannot be merged."""
+    target = tmp_path / "mask.png"
+    for arguments in (
+        ["bars", *SCREEN, *SQUARE_PIXEL, "--widths-mm", "0.2", "--widths-px", "6"],
+        ["grid", *SCREEN, *SQUARE_PIXEL, "--line-mm", "0.2", "--line-px", "6"],
+        ["grid", *SCREEN, *SQUARE_PIXEL, "--gap-mm", "0.15", "--gap-px", "4"],
+    ):
+        assert msla.main([*arguments, "-o", str(target)]) == 2
+        assert "not both" in capsys.readouterr().err
+    assert not target.exists()

@@ -318,10 +318,15 @@ does that; it is not part of the laser chain and does not import the package.
 
 ```sh
 .venv/bin/python tools/msla_tests.py bars --screen-px 5760x3600 --pixel-um 34x34 \
-    -o out/bars.png --widths-mm 0.2,0.15,0.1,0.08,0.06,0.05
+    -o out/bars.png --widths-px 6,5,4,3,2,1
 .venv/bin/python tools/msla_tests.py grid --screen-px 5760x3600 --pixel-um 34x34 \
-    -o out/grid.png --width-mm 50 --height-mm 40 --line-mm 0.2 --gap-mm 0.15
+    -o out/grid.png --width-mm 50 --height-mm 40 --line-px 6 --gap-px 4
 ```
+
+`--widths-px 6,5,4,3,2,1` is the list to start with on this screen: six DIFFERENT steps
+of 34 um (6 px = 204, 5 = 170, 4 = 136, 3 = 102, 2 = 68, 1 = 34 um). The millimetre list
+0.2/0.15/0.1/0.08/0.06/0.05 would give 6, 4, 3, 2, 2, 1 — two identical groups — and the
+tool announces that.
 
 * `--screen-px` and `--pixel-um` are **mandatory**: an invented number is worse than a
   refusal. For the Anycubic Photon Mono X 6Ks the printer profile in UVtools (and
@@ -338,6 +343,12 @@ does that; it is not part of the laser chain and does not import the package.
   plate without a microscope. `--no-marker` turns it off.
 * a width below half a pixel is a refusal; two widths that land on the same `n` are
   announced, because their groups will be identical;
+* a width may be asked in millimetres or in WHOLE PIXELS (`--widths-px`, `--line-px`,
+  `--gap-px`); the two forms exclude each other. Pixels are exactly what will be drawn:
+  `n` pixels of EACH axis, so on a non-square pixel one count is two physical widths;
+* a millimetre request is drawn at the nearest whole pixel, and when that is more than
+  10 % off the tool says so — «0.050 mm along Y is drawn as 34.0 um (-32 %)». The pixel
+  form never carries that warning: there is no millimetre request to be off from.
 * `bars` — groups of lines with the gap equal to the line width: a horizontal block (the
   Y resolution) and a vertical block (the X resolution), each square so the two axes can
   be compared;
